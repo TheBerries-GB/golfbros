@@ -105,15 +105,13 @@ input[type=text],input[type=number]{background:rgba(0,0,0,0.35);border:1px solid
 .score-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(245,240,232,0.08);font-size:13px}
 .score-row:last-child{border-bottom:none}
 .ts{font-size:10px;color:rgba(245,240,232,0.3);text-align:center;padding:4px 0 2px;letter-spacing:.04em}
-.sync-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:#7ec87e;margin-right:4px;vertical-align:middle}
-.sync-dot.off{background:#e85d5d}
 </style>
 </head>
 <body>
 <div id="app">
   <div id="header">
     <div class="htitle"><span class="g">Golf<span class="b"> Bros</span></span></div>
-    <div class="hsub" id="statusMsg">Est. 2023 &middot; Connecting...</div>
+    <div class="hsub" id="statusMsg">Connecting...</div>
     <div id="installBanner" style="display:none;margin:6px 0 4px;text-align:center">
       <button onclick="installApp()" style="background:#e85d5d;border:none;border-radius:20px;padding:7px 22px;color:#f5f0e8;font-size:12px;font-weight:700;cursor:pointer">&#x2B07; Install App</button>
     </div>
@@ -197,49 +195,32 @@ input[type=text],input[type=number]{background:rgba(0,0,0,0.35);border:1px solid
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 <script>
-var firebaseConfig = {
-  apiKey: "AIzaSyD_Pmy96XL5WsmPnvli61W8oBFBfz2Yp-c",
-  authDomain: "golfbros-84b45.firebaseapp.com",
-  projectId: "golfbros-84b45",
-  storageBucket: "golfbros-84b45.firebasestorage.app",
-  messagingSenderId: "645717456613",
-  appId: "1:645717456613:web:a4d48888d2a0a1b381460c"
-};
-firebase.initializeApp(firebaseConfig);
-var db = firebase.firestore();
-
-// Enable Firestore offline persistence so the app works without internet
-// and syncs automatically when connection is restored
-db.enablePersistence({synchronizeTabs:true}).catch(function(err){
-  // Multi-tab persistence not supported in all browsers — silent fallback is fine
-  if(err.code!=='failed-precondition'&&err.code!=='unimplemented'){
-    console.warn('Persistence error:',err);
-  }
+firebase.initializeApp({
+  apiKey:"AIzaSyD_Pmy96XL5WsmPnvli61W8oBFBfz2Yp-c",
+  authDomain:"golfbros-84b45.firebaseapp.com",
+  projectId:"golfbros-84b45",
+  storageBucket:"golfbros-84b45.firebasestorage.app",
+  messagingSenderId:"645717456613",
+  appId:"1:645717456613:web:a4d48888d2a0a1b381460c"
 });
+var db=firebase.firestore();
 
-var PL = ["Joe B","Joe N","Henry","Jenny"];
-var INI = {"Joe B":"JB","Joe N":"JN","Henry":"HE","Jenny":"JY"};
-var NICK = {"Joe B":"Big in Veg","Joe N":"The Green","Henry":"The Berries","Jenny":"Baby J"};
-var PHOTOS = {"Joe B":null,"Joe N":null,"Henry":null,"Jenny":null};
-var photoUploadTarget = null;
-var lastUpdated = null;
-var unsubscribeProfileListener = null; // separate listener for photos+nicks
+var PL=["Joe B","Joe N","Henry","Jenny"];
+var INI={"Joe B":"JB","Joe N":"JN","Henry":"HE","Jenny":"JY"};
+var NICK={"Joe B":"Big in Veg","Joe N":"The Green","Henry":"The Berries","Jenny":"Baby J"};
+var PHOTOS={"Joe B":null,"Joe N":null,"Henry":null,"Jenny":null};
+var photoUploadTarget=null,lastUpdated=null;
+var unsubListener=null,unsubProfile=null;
+var isSaving=false,isProfileSaving=false;
 
-// unsubscribe handle for the real-time listener
-var unsubscribeListener = null;
-// flag: are we currently mid-save on the DATA doc? Prevents listener echo.
-var isSaving = false;
-// flag: are we currently mid-save on the PROFILE doc?
-var isProfileSaving = false;
-
-var SCORES = {
+var SCORES={
   "Joe B":[109,106,95,96,111],
   "Joe N":[138,120,121,104,109],
   "Henry":[96,103,92,101,90],
   "Jenny":[114,117,136,108,109]
 };
 
-var D25 = [
+var D25=[
   {date:"12/01/25",course:"Clandon Golf Club",double:0,results:{"Joe B":{pos:3,bonus:1,total:4,dns:0,winner:0,score:0},"Joe N":{pos:1,bonus:0,total:1,dns:0,winner:0,score:0},"Henry":{pos:2,bonus:0,total:2,dns:0,winner:0,score:0},"Jenny":{pos:0,bonus:0,total:0,dns:1,winner:0,score:0}}},
   {date:"09/02/25",course:"Clandon Golf Club",double:0,results:{"Joe B":{pos:3,bonus:1,total:4,dns:0,winner:0,score:0},"Joe N":{pos:2,bonus:0,total:2,dns:0,winner:0,score:0},"Henry":{pos:1,bonus:0,total:1,dns:0,winner:0,score:0},"Jenny":{pos:4,bonus:0,total:4,dns:0,winner:1,score:0}}},
   {date:"21/03/25",course:"Weald of Kent",double:0,results:{"Joe B":{pos:3,bonus:0,total:3,dns:0,winner:1,score:0},"Joe N":{pos:2,bonus:0,total:2,dns:0,winner:0,score:0},"Henry":{pos:1,bonus:0,total:1,dns:0,winner:0,score:0},"Jenny":{pos:0,bonus:0,total:0,dns:1,winner:0,score:0}}},
@@ -254,56 +235,41 @@ var D25 = [
   {date:"30/12/25",course:"The Hertsmere",double:0,results:{"Joe B":{pos:3,bonus:0,total:3,dns:0,winner:0,score:0},"Joe N":{pos:1,bonus:0,total:1,dns:0,winner:0,score:0},"Henry":{pos:4,bonus:0,total:4,dns:0,winner:1,score:0},"Jenny":{pos:2,bonus:1,total:3,dns:0,winner:0,score:0}}}
 ];
 
-var D26 = [
+var D26=[
   {date:"31/01/26",course:"Blakes",double:0,results:{"Joe B":{pos:3,score:95,bonus:2,total:5,dns:0,winner:0,hcPts:3,hcWinner:0},"Joe N":{pos:2,score:121,bonus:0,total:2,dns:0,winner:0,hcPts:2,hcWinner:0},"Henry":{pos:4,score:92,bonus:2,total:6,dns:0,winner:1,hcPts:4,hcWinner:1},"Jenny":{pos:1,score:136,bonus:0,total:1,dns:0,winner:0,hcPts:1,hcWinner:0}}},
   {date:"19/04/26",course:"Clandon",double:0,results:{"Joe B":{pos:4,score:96,bonus:1,total:5,dns:0,winner:1,hcPts:4,hcWinner:1},"Joe N":{pos:2,score:104,bonus:0,total:2,dns:0,winner:0,hcPts:3,hcWinner:0},"Henry":{pos:3,score:101,bonus:0,total:3,dns:0,winner:0,hcPts:1,hcWinner:0},"Jenny":{pos:1,score:108,bonus:0,total:1,dns:0,winner:0,hcPts:2,hcWinner:0}}},
   {date:"10/05/26",course:"Hurtmore",double:0,results:{"Joe B":{pos:1,score:111,bonus:0,total:1,dns:0,winner:0,hcPts:1,hcWinner:0},"Joe N":{pos:3,score:109,bonus:0,total:3,dns:0,winner:0,hcPts:3,hcWinner:0},"Henry":{pos:4,score:90,bonus:2,total:6,dns:0,winner:1,hcPts:4,hcWinner:1},"Jenny":{pos:2,score:110,bonus:0,total:2,dns:0,winner:0,hcPts:2,hcWinner:0}}}
 ];
 
-var ST = {r25:D25,r26:D26,season:"2026"};
+var ST={r25:D25,r26:D26,season:"2026"};
 var editTgt=null,delTgt=null,formSeason="2026";
 
 function cloneArr(a){var b=[],i;for(i=0;i<a.length;i++){b.push(a[i]);}return b;}
 function arrSum(a){var s=0,i;for(i=0;i<a.length;i++){s+=a[i];}return s;}
 function cmpHyD(a,b){return b.hy-a.hy;}
 function cmpSc(a,b){return a.s-b.s;}
-
 function avH(p,sz){
   var img=PHOTOS[p]?'<img src="'+PHOTOS[p]+'" alt="'+p+'">':INI[p];
   return '<div class="av" style="width:'+sz+'px;height:'+sz+'px;font-size:'+Math.floor(sz*0.34)+'px">'+img+'</div>';
 }
 function med(i){return["1st","2nd","3rd"][i]||(i+1)+"th";}
+function showStatus(msg,ok){var el=document.getElementById('statusMsg');el.textContent=msg;el.className='hsub'+(ok?' ok':'');}
 
 function calcHC(sh){
   var i,p,a,best=9999,avgs={},hcs={};
-  for(i=0;i<PL.length;i++){
-    p=PL[i];
-    a=sh[p].length?arrSum(sh[p])/sh[p].length:9999;
-    avgs[p]=a;
-    if(a<best){best=a;}
-  }
-  for(i=0;i<PL.length;i++){
-    p=PL[i];
-    hcs[p]=avgs[p]===9999?0:parseFloat(((avgs[p]-best)/2).toFixed(1));
-  }
+  for(i=0;i<PL.length;i++){p=PL[i];a=sh[p].length?arrSum(sh[p])/sh[p].length:9999;avgs[p]=a;if(a<best){best=a;}}
+  for(i=0;i<PL.length;i++){p=PL[i];hcs[p]=avgs[p]===9999?0:parseFloat(((avgs[p]-best)/2).toFixed(1));}
   return hcs;
 }
-
 function getHCBefore(roundIdx){
   var sh={},i,j,p,rr;
   for(i=0;i<PL.length;i++){p=PL[i];sh[p]=cloneArr(SCORES[p]);}
   for(i=ST.r26.length-1;i>=roundIdx;i--){
     rr=ST.r26[i];
-    for(j=0;j<PL.length;j++){
-      p=PL[j];
-      if(!rr.results[p].dns&&rr.results[p].score>0){
-        if(sh[p].length>0){sh[p].pop();}
-      }
-    }
+    for(j=0;j<PL.length;j++){p=PL[j];if(!rr.results[p].dns&&rr.results[p].score>0){if(sh[p].length>0){sh[p].pop();}}}
   }
   return calcHC(sh);
 }
-
 function calcHCPts(results,hc){
   var pm=[4,3,2,1],playing=[],i,p;
   for(i=0;i<PL.length;i++){p=PL[i];if(!results[p].dns&&results[p].score>0){playing.push(p);}}
@@ -320,7 +286,6 @@ function avgR(rounds,req){
 }
 function hStd(t,r,a){return(!r||!a)?0:(t/r)*(1-Math.exp(-r/a));}
 function hHc(p,r,a){return(!r||!a)?0:(p/r)+(r/a)*0.5;}
-
 function calcSt25(){
   var avg=avgR(ST.r25,0),rows=[],i,j,p,r,pl,pos,bon,tot,wins,mult;
   for(i=0;i<PL.length;i++){p=PL[i];pl=0;pos=0;bon=0;wins=0;for(j=0;j<ST.r25.length;j++){r=ST.r25[j];mult=r.double?2:1;if(!r.results[p].dns){pl++;pos+=r.results[p].pos*mult;bon+=r.results[p].bonus*mult;}if(r.results[p].winner){wins++;}}tot=pos+bon;rows.push({p:p,rds:pl,pos:pos,bon:bon,tot:tot,wins:wins,hy:hStd(tot,pl,avg)});}
@@ -339,24 +304,14 @@ function calcSt26h(){
 
 function playerStats(p){
   var i,r,sc,bon,wins=0,hcWins=0,best=999,sub90=0,sub95=0,sub100=0,birdies=0,totalRds=0;
-  var allRounds=ST.r25.concat(ST.r26);
-  for(i=0;i<allRounds.length;i++){
-    r=allRounds[i];
-    if(r.results[p].dns){continue;}
-    totalRds++;
-    sc=r.results[p].score||0;
-    bon=r.results[p].bonus||0;
-    if(r.results[p].winner){wins++;}
-    if(r.results[p].hcWinner){hcWins++;}
-    if(sc>0){
-      if(sc<best){best=sc;}
-      if(sc<100){sub100++;}
-      if(sc<95){sub95++;}
-      if(sc<90){sub90++;}
-      if(sc>=100&&bon>0){birdies+=bon;}
-      else if(sc<100&&sc>=95&&bon>1){birdies+=bon-1;}
-      else if(sc<95&&sc>=90&&bon>2){birdies+=bon-2;}
-      else if(sc<90&&bon>3){birdies+=bon-3;}
+  var all=ST.r25.concat(ST.r26);
+  for(i=0;i<all.length;i++){
+    r=all[i];if(r.results[p].dns){continue;}totalRds++;
+    sc=r.results[p].score||0;bon=r.results[p].bonus||0;
+    if(r.results[p].winner){wins++;}if(r.results[p].hcWinner){hcWins++;}
+    if(sc>0){if(sc<best){best=sc;}if(sc<100){sub100++;}if(sc<95){sub95++;}if(sc<90){sub90++;}
+      if(sc>=100&&bon>0){birdies+=bon;}else if(sc<100&&sc>=95&&bon>1){birdies+=bon-1;}
+      else if(sc<95&&sc>=90&&bon>2){birdies+=bon-2;}else if(sc<90&&bon>3){birdies+=bon-3;}
     }
   }
   return{totalRds:totalRds,wins:wins,hcWins:hcWins,best:best===999?'-':best,sub90:sub90,sub95:sub95,sub100:sub100,birdies:birdies};
@@ -382,8 +337,7 @@ function tblHTML(rows,keys,lbls,his,dms,fmts,note){
 function swTab(id,btn){
   document.querySelectorAll('.tab-pg').forEach(function(el){el.style.display='none';});
   document.querySelectorAll('.tbtn').forEach(function(el){el.classList.remove('on');});
-  document.getElementById(id).style.display='block';
-  btn.classList.add('on');
+  document.getElementById(id).style.display='block';btn.classList.add('on');
 }
 function setSeason(s){ST.season=s;render();}
 function render(){renderStandings();renderHistory();renderHandicaps();renderPlayers();}
@@ -391,15 +345,15 @@ function render(){renderStandings();renderHistory();renderHandicaps();renderPlay
 function renderStandings(){
   var el=document.getElementById('standings'),s=ST.season,h='';
   h+='<div class="pills"><button class="pl'+(s==="2026"?" on":"")+'" onclick="setSeason(\'2026\')">2026</button><button class="pl'+(s==="2025"?" on":"")+'" onclick="setSeason(\'2025\')">2025</button></div>';
-  if(lastUpdated){h+='<div class="ts"><span class="sync-dot"></span>Live \u00B7 Last saved: '+lastUpdated+'</div>';}
+  if(lastUpdated){h+='<div class="ts">\u25CF Live \u00B7 Last saved: '+lastUpdated+'</div>';}
   if(s==="2025"){
-    h+='<p style="font-size:11px;color:rgba(245,240,232,.4);margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em">'+ST.r25.length+' rounds &middot; ranked by hybrid score</p>';
+    h+='<p style="font-size:11px;color:rgba(245,240,232,.4);margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em">'+ST.r25.length+' rounds \u00B7 ranked by hybrid score</p>';
     h+=tblHTML(calcSt25(),["rds","pos","bon","tot","wins","hy"],["Rds","Pos","Bon","Total","W","Hybrid"],[0,0,0,0,0,1],[1,0,0,0,0,0],["","","","","","h"],"Hybrid = ((pos+bonus)/rds) x (1-exp(-rds/avg))");
   }else{
-    h+='<p style="font-size:11px;color:rgba(245,240,232,.4);margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em">'+ST.r26.length+' rounds &middot; two parallel leagues</p>';
+    h+='<p style="font-size:11px;color:rgba(245,240,232,.4);margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em">'+ST.r26.length+' rounds \u00B7 two parallel leagues</p>';
     h+='<div class="slbl"><h3>Stroke play</h3></div>';
     h+=tblHTML(calcSt26s(),["rds","pos","bon","tot","wins","avg","hy"],["Rds","Pos","Bon","Total","W","Avg","Hybrid"],[0,0,0,0,0,0,1],[1,0,0,0,0,1,0],["","","","","","a","h"],"Hybrid = ((pos+bonus)/rds) x (1-exp(-rds/avg))");
-    h+='<div class="slbl" style="margin-top:18px"><h3>Handicapped league</h3><p>Rolling HC &middot; adj score = gross minus HC at time of round</p></div>';
+    h+='<div class="slbl" style="margin-top:18px"><h3>Handicapped league</h3><p>Rolling HC \u00B7 adj score = gross minus HC at time of round</p></div>';
     h+=tblHTML(calcSt26h(),["rds","pos","wins","hy"],["Rds","HC pts","W","Hybrid"],[0,0,0,1],[1,0,0,0],["","","","h"],"HC hybrid = (pos/rds) + (rds/avg) x 0.5");
   }
   el.innerHTML=h;
@@ -422,9 +376,9 @@ function rcHTML(round,idx,sk){
     }
     h+='</div>';
   }
-  h+='</div></div>';
-  return h;
+  h+='</div></div>';return h;
 }
+
 function renderHistory(){
   var el=document.getElementById('history'),s=ST.season,h='';
   h+='<div class="hbar"><div class="pills" style="margin:0">';
@@ -441,14 +395,11 @@ function renderHistory(){
 }
 
 function renderHandicaps(){
-  var hcs=calcHC(SCORES);
-  var avgs={},i,j,p,t,rnd,h;
+  var hcs=calcHC(SCORES),avgs={},i,j,p,t,rnd,h;
   for(i=0;i<PL.length;i++){p=PL[i];t=arrSum(SCORES[p]);avgs[p]=parseFloat((t/SCORES[p].length).toFixed(1));}
   var hcHistory=[];
-  for(i=0;i<ST.r26.length;i++){
-    hcHistory.push({date:ST.r26[i].date,course:ST.r26[i].course,hc:getHCBefore(i)});
-  }
-  h='<div class="slbl"><h3>Current Handicaps</h3><p>Best player=0 &middot; others=(avg gap)/2 &middot; recalculated each round</p></div>';
+  for(i=0;i<ST.r26.length;i++){hcHistory.push({date:ST.r26[i].date,course:ST.r26[i].course,hc:getHCBefore(i)});}
+  h='<div class="slbl"><h3>Current Handicaps</h3><p>Best player=0 \u00B7 others=(avg gap)/2 \u00B7 recalculated each round</p></div>';
   h+='<div class="hcgrid">';
   for(i=0;i<PL.length;i++){
     p=PL[i];
@@ -461,8 +412,7 @@ function renderHandicaps(){
     h+='<div style="font-size:10px;color:rgba(245,240,232,.4);margin-bottom:5px;text-transform:uppercase;letter-spacing:.05em">Last 5 scores</div>';
     h+='<div class="schips">';
     for(j=0;j<SCORES[p].length;j++){h+='<span class="chip">'+SCORES[p][j]+'</span>';}
-    h+='</div>';
-    h+='<div style="font-size:11px;color:rgba(245,240,232,.4)">Avg: <strong style="color:#f5f0e8">'+avgs[p]+'</strong></div>';
+    h+='</div><div style="font-size:11px;color:rgba(245,240,232,.4)">Avg: <strong style="color:#f5f0e8">'+avgs[p]+'</strong></div>';
     h+='</div></div>';
   }
   h+='</div>';
@@ -474,11 +424,7 @@ function renderHandicaps(){
     for(i=0;i<hcHistory.length;i++){
       rnd=hcHistory[i];
       h+='<tr><td class="L" style="font-size:11px"><div style="font-weight:600">'+rnd.course.split(" ")[0]+'</div><div style="color:rgba(245,240,232,.4);font-size:10px">'+rnd.date+'</div></td>';
-      for(j=0;j<PL.length;j++){
-        p=PL[j];
-        var isZ=rnd.hc[p]===0;
-        h+='<td style="color:'+(isZ?'#e85d5d':'#f5f0e8')+';font-weight:'+(isZ?700:400)+'">'+rnd.hc[p]+'</td>';
-      }
+      for(j=0;j<PL.length;j++){p=PL[j];var isZ=rnd.hc[p]===0;h+='<td style="color:'+(isZ?'#e85d5d':'#f5f0e8')+';font-weight:'+(isZ?700:400)+'">'+rnd.hc[p]+'</td>';}
       h+='</tr>';
     }
     h+='</tbody></table></div></div>';
@@ -491,8 +437,7 @@ function renderPlayers(){
   h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
   var i,p,st;
   for(i=0;i<PL.length;i++){
-    p=PL[i];
-    st=playerStats(p);
+    p=PL[i];st=playerStats(p);
     h+='<div onclick="openProfile(\''+p+'\')" style="background:rgba(0,0,0,0.22);border:1px solid rgba(245,240,232,0.12);border-radius:12px;padding:14px;cursor:pointer;text-align:center">';
     h+='<div style="display:flex;justify-content:center;margin-bottom:8px">'+avH(p,52)+'</div>';
     h+='<div style="font-weight:700;font-size:15px">'+p+'</div>';
@@ -514,18 +459,14 @@ function openProfile(p){
   h+='<button class="profile-close" onclick="closeProfile()">&#x2715;</button>';
   h+='<div class="profile-av" onclick="triggerPhotoUpload(\''+p+'\')">'+photo+'<div class="profile-av-edit">&#x1F4F7;</div></div>';
   h+='<div class="profile-name">'+p+'</div>';
-  // Editable nickname
   h+='<div style="display:flex;align-items:center;justify-content:center;gap:6px;margin-top:4px">';
   h+='<div class="profile-nick" id="nickDisplay_'+p+'">'+NICK[p]+'</div>';
   h+='<button onclick="editNick(\''+p+'\')" style="background:none;border:1px solid rgba(245,240,232,0.25);border-radius:8px;padding:2px 7px;color:rgba(245,240,232,0.45);font-size:10px;cursor:pointer">Edit</button>';
   h+='</div>';
   h+='<div id="nickEdit_'+p+'" style="display:none;margin-top:6px;padding:0 20px">';
-  h+='<div style="display:flex;gap:6px">';
-  h+='<input type="text" id="nickInput_'+p+'" value="'+NICK[p]+'" style="flex:1;font-size:13px;padding:7px 10px">';
-  h+='<button onclick="saveNick(\''+p+'\')" style="background:#e85d5d;border:none;border-radius:8px;padding:7px 12px;color:#f5f0e8;font-size:12px;font-weight:700;cursor:pointer">Save</button>';
-  h+='</div></div>';
-  h+='</div>';
-  h+='<div class="profile-body">';
+  h+='<div style="display:flex;gap:6px"><input type="text" id="nickInput_'+p+'" value="'+NICK[p]+'" style="flex:1;font-size:13px;padding:7px 10px">';
+  h+='<button onclick="saveNick(\''+p+'\')" style="background:#e85d5d;border:none;border-radius:8px;padding:7px 12px;color:#f5f0e8;font-size:12px;font-weight:700;cursor:pointer">Save</button></div></div>';
+  h+='</div><div class="profile-body">';
   h+='<div class="slbl" style="margin-bottom:12px"><h3>Lifetime Stats</h3><p>Across all seasons</p></div>';
   h+='<div class="stat-grid">';
   h+='<div class="stat-box"><div class="stat-val grn">'+st.wins+'</div><div class="stat-lbl">Total Wins</div></div>';
@@ -552,97 +493,65 @@ function openProfile(p){
   document.getElementById('profileOv').classList.add('open');
 }
 function closeProfile(){document.getElementById('profileOv').classList.remove('open');}
-function editNick(p){
-  document.getElementById('nickEdit_'+p).style.display='block';
-  document.getElementById('nickInput_'+p).focus();
-}
+function editNick(p){document.getElementById('nickEdit_'+p).style.display='block';document.getElementById('nickInput_'+p).focus();}
 function saveNick(p){
   var val=document.getElementById('nickInput_'+p).value.trim();
   if(!val){return;}
-  NICK[p]=val;
-  persistProfile();
-  // Update display inline without closing overlay
-  var disp=document.getElementById('nickDisplay_'+p);
-  if(disp){disp.textContent=val;}
+  NICK[p]=val;persistProfile();
+  var d=document.getElementById('nickDisplay_'+p);if(d){d.textContent=val;}
   document.getElementById('nickEdit_'+p).style.display='none';
-  render(); // refresh all tabs so nick shows everywhere
+  render();
 }
 function triggerPhotoUpload(p){photoUploadTarget=p;document.getElementById('photoInput').click();}
 function handlePhotoUpload(e){
-  var file=e.target.files[0];
-  if(!file||!photoUploadTarget){return;}
+  var file=e.target.files[0];if(!file||!photoUploadTarget){return;}
   var reader=new FileReader();
-  reader.onload=function(ev){
-    PHOTOS[photoUploadTarget]=ev.target.result;
-    persistProfile(); // saves to SEPARATE profile doc — never conflicts with round saves
-    openProfile(photoUploadTarget);
-  };
-  reader.readAsDataURL(file);
-  e.target.value='';
-}
+  reader.onload=function(ev){PHOTOS[photoUploadTarget]=ev.target.result;persistProfile();openProfile(photoUploadTarget);};
+  reader.readAsDataURL(file);e.target.value='';
 }
 
 function openAdd(){
   editTgt=null;formSeason=ST.season;
   document.getElementById('mTitle').textContent='Add round \u00B7 '+formSeason;
   document.getElementById('mHint').textContent=formSeason==="2026"?"Gross score per player. Blank=DNS. Positions auto-calculated. Enter bonus pts manually.":"Score per player. Blank=DNS. Positions auto-calculated.";
-  document.getElementById('fDate').value='';
-  document.getElementById('fCourse').value='';
-  document.getElementById('fDouble').checked=false;
-  buildPInputs({});
-  document.getElementById('addOv').style.display='flex';
+  document.getElementById('fDate').value='';document.getElementById('fCourse').value='';document.getElementById('fDouble').checked=false;
+  buildPInputs({});document.getElementById('addOv').style.display='flex';
 }
 function openEdit(idx,sk){
   var round=sk==="2026"?ST.r26[idx]:ST.r25[idx],ex={},i,p,r;
   editTgt={idx:idx,sk:sk};formSeason=sk;
   document.getElementById('mTitle').textContent='Edit round \u00B7 '+sk;
   document.getElementById('mHint').textContent=sk==="2026"?"Gross score per player. Blank=DNS. Positions auto-calculated.":"Score per player. Blank=DNS. Positions auto-calculated.";
-  document.getElementById('fDate').value=round.date;
-  document.getElementById('fCourse').value=round.course;
-  document.getElementById('fDouble').checked=round.double?true:false;
+  document.getElementById('fDate').value=round.date;document.getElementById('fCourse').value=round.course;document.getElementById('fDouble').checked=round.double?true:false;
   for(i=0;i<PL.length;i++){p=PL[i];r=round.results[p];if(!r.dns){ex[p]={score:r.score||0,bonus:r.bonus||0};}}
-  buildPInputs(ex);
-  document.getElementById('addOv').style.display='flex';
+  buildPInputs(ex);document.getElementById('addOv').style.display='flex';
 }
 function buildPInputs(ex){
   var h='',i,p,sc,bn;
   for(i=0;i<PL.length;i++){
-    p=PL[i];
-    sc=(ex[p]&&ex[p].score>0)?ex[p].score:'';
-    bn=(ex[p]&&ex[p].bonus)?ex[p].bonus:'';
-    h+='<div class="pgrid">';
-    h+='<div style="display:flex;align-items:center;gap:6px">'+avH(p,26)+'<span style="font-size:13px;font-weight:600;min-width:60px">'+NICK[p]+'</span></div>';
+    p=PL[i];sc=(ex[p]&&ex[p].score>0)?ex[p].score:'';bn=(ex[p]&&ex[p].bonus)?ex[p].bonus:'';
+    h+='<div class="pgrid"><div style="display:flex;align-items:center;gap:6px">'+avH(p,26)+'<span style="font-size:13px;font-weight:600;min-width:60px">'+NICK[p]+'</span></div>';
     h+='<input type="number" id="sc'+i+'" placeholder="Score" value="'+sc+'">';
     h+='<input type="number" id="bn'+i+'" placeholder="Bonus" value="'+bn+'">';
-    h+='<div class="dns-chk"><input type="checkbox" id="dns'+i+'" onchange="toggleDNS('+i+')"><label for="dns'+i+'">DNS</label></div>';
-    h+='</div>';
+    h+='<div class="dns-chk"><input type="checkbox" id="dns'+i+'" onchange="toggleDNS('+i+')"><label for="dns'+i+'">DNS</label></div></div>';
   }
   document.getElementById('pInputs').innerHTML=h;
-  for(i=0;i<PL.length;i++){if(ex[PL[i]]){document.getElementById('dns'+i).checked=false;}}
 }
 function toggleDNS(i){
   var isDNS=document.getElementById('dns'+i).checked;
-  document.getElementById('sc'+i).disabled=isDNS;
-  document.getElementById('bn'+i).disabled=isDNS;
+  document.getElementById('sc'+i).disabled=isDNS;document.getElementById('bn'+i).disabled=isDNS;
   if(isDNS){document.getElementById('sc'+i).value='';document.getElementById('bn'+i).value='';}
 }
 function closeModal(){document.getElementById('addOv').style.display='none';}
 
 function saveRound(){
-  var date=document.getElementById('fDate').value;
-  var course=document.getElementById('fCourse').value;
-  var dbl=document.getElementById('fDouble').checked?1:0;
+  var date=document.getElementById('fDate').value,course=document.getElementById('fCourse').value,dbl=document.getElementById('fDouble').checked?1:0;
   if(!date||!course){return;}
   var scored=[],i,p,v,pm=[4,3,2,1],results={},j,bonus,nr;
   for(i=0;i<PL.length;i++){
     p=PL[i];
-    if(document.getElementById('dns'+i).checked){
-      results[p]={pos:0,bonus:0,total:0,dns:1,winner:0,score:0,hcPts:0,hcWinner:0};
-    }else{
-      v=parseFloat(document.getElementById('sc'+i).value)||0;
-      if(v>0){scored.push({p:p,s:v,i:i});}
-      else{results[p]={pos:0,bonus:0,total:0,dns:1,winner:0,score:0,hcPts:0,hcWinner:0};}
-    }
+    if(document.getElementById('dns'+i).checked){results[p]={pos:0,bonus:0,total:0,dns:1,winner:0,score:0,hcPts:0,hcWinner:0};}
+    else{v=parseFloat(document.getElementById('sc'+i).value)||0;if(v>0){scored.push({p:p,s:v,i:i});}else{results[p]={pos:0,bonus:0,total:0,dns:1,winner:0,score:0,hcPts:0,hcWinner:0};}}
   }
   if(scored.length<2){alert('Please enter scores for at least 2 players.');return;}
   scored.sort(cmpSc);
@@ -657,145 +566,69 @@ function saveRound(){
     var ridx=editTgt?editTgt.idx:ST.r26.length;
     results=calcHCPts(results,getHCBefore(ridx));
     for(i=0;i<scored.length;i++){
-      p=scored[i].p;
-      SCORES[p]=cloneArr(SCORES[p]);
-      SCORES[p].push(scored[i].s);
+      p=scored[i].p;SCORES[p]=cloneArr(SCORES[p]);SCORES[p].push(scored[i].s);
       if(SCORES[p].length>5){SCORES[p]=SCORES[p].slice(SCORES[p].length-5);}
     }
   }
   nr={date:date,course:course,double:dbl,results:results};
   if(formSeason==="2026"){if(editTgt){ST.r26[editTgt.idx]=nr;}else{ST.r26.push(nr);}}
   else{if(editTgt){ST.r25[editTgt.idx]=nr;}else{ST.r25.push(nr);}}
-  closeModal();
-  persist();
-  // render() is called inside persist() via the onSnapshot callback on the saving device,
-  // and automatically on all other devices when Firestore pushes the update
+  closeModal();persist();
 }
 
 function openDel(idx,sk){delTgt={idx:idx,sk:sk};document.getElementById('delOv').style.display='flex';}
 function closeDel(){document.getElementById('delOv').style.display='none';delTgt=null;}
-function confirmDel(){
-  if(!delTgt){return;}
-  if(delTgt.sk==="2026"){ST.r26.splice(delTgt.idx,1);}
-  else{ST.r25.splice(delTgt.idx,1);}
-  closeDel();persist();
-}
+function confirmDel(){if(!delTgt){return;}if(delTgt.sk==="2026"){ST.r26.splice(delTgt.idx,1);}else{ST.r25.splice(delTgt.idx,1);}closeDel();persist();}
 function closeNY(){document.getElementById('nyOv').style.display='none';}
 function doNewYear(){ST.r25=ST.r26.slice();ST.r26=[];ST.season="2026";closeNY();persist();}
 
-// ---- Firebase: persist + real-time listener ----
-function showStatus(msg,ok){
-  var el=document.getElementById('statusMsg');
-  el.textContent=msg;el.className='hsub'+(ok?' ok':'');
-}
-
+// ---- Firebase: DATA doc (rounds+scores) and PROFILE doc (photos+nicks) are separate ----
 function persist(){
   var now=new Date();
   lastUpdated=now.toLocaleDateString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
-  isSaving=true;
-  showStatus('Saving...',false);
-  // DATA doc: rounds + scores only. Photos and nicks live in a SEPARATE doc.
-  db.collection('league').doc('data').set({
-    r25:ST.r25,
-    r26:ST.r26,
-    scores:SCORES,
-    lastUpdated:lastUpdated,
-    v:5
-  }).then(function(){
-    setTimeout(function(){isSaving=false;},800);
-    showStatus('\u2713 Saved \u00B7 all devices updating',true);
+  isSaving=true;showStatus('Saving...',false);
+  db.collection('league').doc('data').set({r25:ST.r25,r26:ST.r26,scores:SCORES,lastUpdated:lastUpdated,v:5})
+  .then(function(){
+    setTimeout(function(){isSaving=false;},1500);
+    showStatus('\u2713 Saved',true);
     setTimeout(function(){showStatus('\u25CF Live \u00B7 '+lastUpdated,true);},2500);
-  }).catch(function(){
-    isSaving=false;
-    showStatus('Save failed \u2013 check connection',false);
-  });
+  }).catch(function(){isSaving=false;showStatus('Save failed \u2013 check connection',false);});
 }
-
 function persistProfile(){
-  // PROFILE doc: photos and nicks only. Completely isolated from round saves.
   isProfileSaving=true;
-  db.collection('league').doc('profile').set({
-    photos:PHOTOS,
-    nicks:NICK
-  }).then(function(){
-    setTimeout(function(){isProfileSaving=false;},800);
-  }).catch(function(){
-    isProfileSaving=false;
-  });
+  db.collection('league').doc('profile').set({photos:PHOTOS,nicks:NICK})
+  .then(function(){setTimeout(function(){isProfileSaving=false;},1500);})
+  .catch(function(){isProfileSaving=false;});
 }
-
-function applyRemoteData(d){
-  // Only apply rounds + scores — never photos or nicks (those come from profile doc)
-  if(d.v&&d.v>=4){
-    if(d.r25){ST.r25=d.r25;}
-    if(d.r26){ST.r26=d.r26;}
-    if(d.scores){
-      var k;
-      for(k in d.scores){
-        if(SCORES.hasOwnProperty(k)){SCORES[k]=d.scores[k];}
-      }
-    }
-  }
+function applyData(d){
+  if(!d||!d.v||d.v<5){return;}
+  if(d.r25){ST.r25=d.r25;}if(d.r26){ST.r26=d.r26;}
+  if(d.scores){var k;for(k in d.scores){if(SCORES.hasOwnProperty(k)){SCORES[k]=d.scores[k];}}}
   if(d.lastUpdated){lastUpdated=d.lastUpdated;}
 }
-
-function applyProfileData(d){
-  // Apply photos and nicks from the profile doc
-  if(d.photos){
-    var k;
-    for(k in d.photos){
-      if(PHOTOS.hasOwnProperty(k)){PHOTOS[k]=d.photos[k];}
-    }
-  }
-  if(d.nicks){
-    var k2;
-    for(k2 in d.nicks){
-      if(NICK.hasOwnProperty(k2)){NICK[k2]=d.nicks[k2];}
-    }
-  }
+function applyProfile(d){
+  if(!d){return;}
+  if(d.photos){var k;for(k in d.photos){if(PHOTOS.hasOwnProperty(k)){PHOTOS[k]=d.photos[k];}}}
+  if(d.nicks){var k2;for(k2 in d.nicks){if(NICK.hasOwnProperty(k2)){NICK[k2]=d.nicks[k2];}}}
+}
+function refreshOpenProfile(){
+  var ov=document.getElementById('profileOv');
+  if(ov&&ov.classList.contains('open')){var n=document.querySelector('.profile-name');if(n){openProfile(n.textContent);}}
 }
 
-function startListener(){
-  if(unsubscribeListener){unsubscribeListener();}
-  if(unsubscribeProfileListener){unsubscribeProfileListener();}
-
-  // ---- Listener 1: rounds + scores (data doc) ----
-  unsubscribeListener = db.collection('league').doc('data').onSnapshot(
-    {includeMetadataChanges:false},
-    function(doc){
-      if(!doc.exists){showStatus('\u25CF Live',true);render();return;}
-      var d=doc.data();
-      if(isSaving){render();return;}
-      applyRemoteData(d);
-      showStatus('\u25CF Live \u00B7 updated',true);
-      setTimeout(function(){showStatus('\u25CF Live \u00B7 '+(lastUpdated||''),true);},3000);
-      render();
-    },
-    function(err){
-      showStatus('\u25CF Offline \u2013 changes save when reconnected',false);
-      console.warn('Firestore listener error:',err);
-    }
-  );
-
-  // ---- Listener 2: photos + nicks (profile doc) ----
-  unsubscribeProfileListener = db.collection('league').doc('profile').onSnapshot(
-    {includeMetadataChanges:false},
-    function(doc){
-      if(!doc.exists){return;}
-      if(isProfileSaving){return;}
-      applyProfileData(doc.data());
-      render();
-      // If profile overlay is open, refresh it
-      var ov=document.getElementById('profileOv');
-      if(ov&&ov.classList.contains('open')){
-        var nameEl=document.querySelector('.profile-name');
-        if(nameEl){openProfile(nameEl.textContent);}
-      }
-    },
-    function(err){console.warn('Profile listener error:',err);}
-  );
+function startListeners(){
+  if(unsubListener){unsubListener();}
+  if(unsubProfile){unsubProfile();}
+  unsubListener=db.collection('league').doc('data').onSnapshot({includeMetadataChanges:false},function(doc){
+    if(!doc.exists){showStatus('\u25CF Live',true);render();return;}
+    if(isSaving){render();return;}
+    applyData(doc.data());showStatus('\u25CF Live',true);render();
+  },function(err){showStatus('\u25CF Offline \u2013 reconnecting...',false);console.warn(err);});
+  unsubProfile=db.collection('league').doc('profile').onSnapshot({includeMetadataChanges:false},function(doc){
+    if(!doc.exists||isProfileSaving){return;}
+    applyProfile(doc.data());render();refreshOpenProfile();
+  },function(err){console.warn('Profile listener:',err);});
 }
-
 
 // ---- Pull to refresh ----
 var ptrStart=0,ptrActive=false;
@@ -808,12 +641,11 @@ document.getElementById('content').addEventListener('touchmove',function(e){
 document.getElementById('content').addEventListener('touchend',function(){
   if(ptrActive&&document.getElementById('ptrMsg').style.display==='block'){
     document.getElementById('ptrMsg').style.display='none';
-    // Pull-to-refresh just forces a manual read on top of the live listener
-    db.collection('league').doc('data').get().then(function(doc){
-      if(doc.exists){applyRemoteData(doc.data());}
-      render();
-      showStatus('\u25CF Live \u00B7 refreshed',true);
-      setTimeout(function(){showStatus('\u25CF Live \u00B7 '+(lastUpdated||''),true);},2000);
+    Promise.all([db.collection('league').doc('data').get(),db.collection('league').doc('profile').get()])
+    .then(function(res){
+      if(res[0].exists){applyData(res[0].data());}
+      if(res[1].exists){applyProfile(res[1].data());}
+      render();showStatus('\u25CF Live \u2013 refreshed',true);
     });
   }
   ptrActive=false;ptrStart=0;
@@ -830,70 +662,37 @@ function installApp(){if(!deferredPrompt){return;}deferredPrompt.prompt();deferr
 
 // ---- Service Worker ----
 if('serviceWorker' in navigator){
-  window.addEventListener('load',function(){
-    navigator.serviceWorker.register('sw.js').catch(function(){});
-  });
+  window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){});});
 }
 
 // ---- Boot ----
-// Correct scores: the canonical last-5 per player derived from D26 round scores.
-var CORRECT_SCORES = {
-  "Joe B":[109,106,95,96,111],
-  "Joe N":[138,120,121,104,109],
-  "Henry":[96,103,92,101,90],
-  "Jenny":[114,117,136,108,109]
-};
-
-function scoresMatch(a,b){
-  if(a.length!==b.length){return false;}
-  for(var i=0;i<a.length;i++){if(a[i]!==b[i]){return false;}}
-  return true;
-}
-
+render();
 showStatus('Connecting...',false);
-render(); // render seed data immediately so UI isn't blank
-
-// Load profile doc (photos + nicks) and data doc in parallel, then start listeners
-var profileLoaded=false, dataLoaded=false;
-function tryStart(){if(profileLoaded&&dataLoaded){startListener();}}
-
-// 1. Load profile doc first
-db.collection('league').doc('profile').get().then(function(doc){
-  if(doc.exists){applyProfileData(doc.data());render();}
-  profileLoaded=true;
-  tryStart();
-}).catch(function(){profileLoaded=true;tryStart();});
-
-// 2. Load data doc — fix scores if needed, then start listeners
-db.collection('league').doc('data').get().then(function(doc){
-  if(doc.exists){
-    var d=doc.data();
-    var needsFix=false;
-    if(d.scores){
-      var k;
-      for(k in CORRECT_SCORES){
-        if(d.scores[k]&&!scoresMatch(d.scores[k],CORRECT_SCORES[k])){
-          needsFix=true;break;
-        }
-      }
-    }
+Promise.all([
+  db.collection('league').doc('data').get(),
+  db.collection('league').doc('profile').get()
+]).then(function(results){
+  var dataDoc=results[0],profileDoc=results[1];
+  if(profileDoc.exists){applyProfile(profileDoc.data());}
+  if(dataDoc.exists){
+    var d=dataDoc.data();
+    var correct={"Joe B":[109,106,95,96,111],"Joe N":[138,120,121,104,109],"Henry":[96,103,92,101,90],"Jenny":[114,117,136,108,109]};
+    var needsFix=false,k;
+    if(d.scores){for(k in correct){if(d.scores[k]){var a=d.scores[k],b=correct[k],ok=a.length===b.length;if(ok){for(var x=0;x<a.length;x++){if(a[x]!==b[x]){ok=false;break;}}}if(!ok){needsFix=true;break;}}}}
+    applyData(d);
     if(needsFix){
-      applyRemoteData(d);
-      SCORES={"Joe B":cloneArr(CORRECT_SCORES["Joe B"]),"Joe N":cloneArr(CORRECT_SCORES["Joe N"]),"Henry":cloneArr(CORRECT_SCORES["Henry"]),"Jenny":cloneArr(CORRECT_SCORES["Jenny"])};
+      for(k in correct){SCORES[k]=cloneArr(correct[k]);}
       isSaving=true;
-      db.collection('league').doc('data').update({scores:SCORES}).then(function(){
-        setTimeout(function(){isSaving=false;},800);
-        showStatus('Scores corrected \u2013 syncing',true);
-        render();
-      }).catch(function(){isSaving=false;});
-    }else{
-      applyRemoteData(d);
-      render();
+      db.collection('league').doc('data').update({scores:SCORES}).then(function(){setTimeout(function(){isSaving=false;},1500);}).catch(function(){isSaving=false;});
     }
   }
-  dataLoaded=true;
-  tryStart();
-}).catch(function(){dataLoaded=true;tryStart();});
+  render();showStatus('\u25CF Live',true);
+  startListeners();
+}).catch(function(err){
+  console.error('Boot error:',err);
+  showStatus('Connection failed \u2013 check Firebase rules',false);
+  startListeners();
+});
 </script>
 </body>
 </html>
