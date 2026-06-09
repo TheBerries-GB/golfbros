@@ -266,9 +266,27 @@ function calcHC(sh){
   for(i=0;i<PL.length;i++){p=PL[i];hcs[p]=avgs[p]===9999?0:parseFloat(((avgs[p]-best)/2).toFixed(1));}
   return hcs;
 }
+function getScoreHistory(){
+  // Build last 5 scores for each player from SEED + all r26 scores
+  var sh={},i,j,p,rr,tmp;
+  for(i=0;i<PL.length;i++){p=PL[i];sh[p]=cloneArr(SEED[p]);}
+  for(i=0;i<ST.r26.length;i++){
+    rr=ST.r26[i];
+    for(j=0;j<PL.length;j++){
+      p=PL[j];
+      if(!rr.results[p].dns&&rr.results[p].score>0){
+        tmp=cloneArr(sh[p]);
+        tmp.push(rr.results[p].score);
+        if(tmp.length>5){tmp=tmp.slice(tmp.length-5);}
+        sh[p]=tmp;
+      }
+    }
+  }
+  return sh;
+}
 function getHCBefore(roundIdx){
   var sh={},i,j,p,rr,tmp;
-  for(i=0;i<PL.length;i++){p=PL[i];sh[p]=cloneArr(PRE[p]);}
+  for(i=0;i<PL.length;i++){p=PL[i];sh[p]=cloneArr(SEED[p]);}
   for(i=0;i<roundIdx;i++){
     rr=ST.r26[i];
     for(j=0;j<PL.length;j++){
@@ -291,20 +309,7 @@ function calcHCPts(results,hc){
   return results;
 }
 function getHCHistory(){
-  var sh={},i,j,p,rr,tmp;
-  for(i=0;i<PL.length;i++){p=PL[i];sh[p]=cloneArr(PRE[p]);}
-  for(i=0;i<ST.r26.length;i++){
-    rr=ST.r26[i];
-    for(j=0;j<PL.length;j++){
-      p=PL[j];
-      if(!rr.results[p].dns&&rr.results[p].score>0){
-        tmp=cloneArr(sh[p]);tmp.push(rr.results[p].score);
-        if(tmp.length>5){tmp=tmp.slice(tmp.length-5);}
-        sh[p]=tmp;
-      }
-    }
-  }
-  return sh;
+  return getScoreHistory();
 }
 
 // ---- Standings calculations ----
@@ -603,6 +608,15 @@ function saveRound(){
     var ridx=editTgt?editTgt.idx:ST.r26.length;
     results=calcHCPts(results,getHCBefore(ridx));
   }
+  // Update SCORES with new round scores
+  if(formSeason==="2026"){
+    var ii,pp;
+    for(ii=0;ii<scored.length;ii++){
+      pp=scored[ii].p;
+      SCORES[pp].push(scored[ii].s);
+      if(SCORES[pp].length>5){SCORES[pp]=SCORES[pp].slice(SCORES[pp].length-5);}
+    }
+  }
   nr={date:date,course:course,double:dbl,results:results};
   if(formSeason==="2026"){if(editTgt){ST.r26[editTgt.idx]=nr;}else{ST.r26.push(nr);}}
   else{if(editTgt){ST.r25[editTgt.idx]=nr;}else{ST.r25.push(nr);}}
@@ -623,7 +637,7 @@ function showStatus(msg,ok){
 function persist(){
   var now=new Date();
   lastUpdated=now.toLocaleDateString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
-  db.collection('league').doc('data').set({r25:ST.r25,r26:ST.r26,photos:PHOTOS,lastUpdated:lastUpdated,v:2}).then(function(){
+  db.collection('league').doc('data').set({r25:ST.r25,r26:ST.r26,scores:SCORES,photos:PHOTOS,lastUpdated:lastUpdated,v:3}).then(function(){
     showStatus('Saved for all players',true);render();
   }).catch(function(){showStatus('Save failed - check connection',false);});
 }
@@ -635,11 +649,12 @@ function loadData(){
   db.collection('league').doc('data').get().then(function(doc){
     if(doc.exists){
       var d=doc.data();
-      // Only load round data if it has been saved after the fix (v2+)
-      // Always use hardcoded PRE scores - never load them from Firebase
-      if(d.r25&&d.v&&d.v>=2){ST.r25=d.r25;}
-      if(d.r26&&d.v&&d.v>=2){ST.r26=d.r26;}
-      if(d.photos){var k;for(k in d.photos){if(PHOTOS.hasOwnProperty(k)){PHOTOS[k]=d.photos[k];}}}
+      if(d.v&&d.v>=3){
+        if(d.r25){ST.r25=d.r25;}
+        if(d.r26){ST.r26=d.r26;}
+        if(d.scores){var k;for(k in d.scores){if(SCORES.hasOwnProperty(k)){SCORES[k]=d.scores[k];}}}
+      }
+      if(d.photos){var k2;for(k2 in d.photos){if(PHOTOS.hasOwnProperty(k2)){PHOTOS[k2]=d.photos[k2];}}}
       if(d.lastUpdated){lastUpdated=d.lastUpdated;}
     }
     showStatus('Est. 2023 \u00B7 You\'ll find that......',false);render();
