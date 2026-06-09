@@ -84,9 +84,7 @@ input[type=text],input[type=number]{background:rgba(0,0,0,0.35);border:1px solid
 .hbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
 .dns-chk{display:flex;align-items:center;gap:4px;font-size:11px;color:rgba(245,240,232,0.5)}
 .dns-chk input{width:14px;height:14px;cursor:pointer;accent-color:#e85d5d}
-/* Pull to refresh */
 .ptr{text-align:center;padding:10px;font-size:12px;color:rgba(245,240,232,0.4);display:none}
-/* Profile overlay */
 .profile-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:400;display:none;align-items:flex-end;justify-content:center}
 .profile-overlay.open{display:flex}
 .profile-modal{background:#1a3a16;border-radius:16px 16px 0 0;width:100%;max-width:520px;max-height:92vh;overflow-y:auto;border:1px solid rgba(245,240,232,0.15);border-bottom:none}
@@ -106,15 +104,16 @@ input[type=text],input[type=number]{background:rgba(0,0,0,0.35);border:1px solid
 .stat-lbl{font-size:10px;color:rgba(245,240,232,0.4);text-transform:uppercase;letter-spacing:.05em;margin-top:4px}
 .score-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(245,240,232,0.08);font-size:13px}
 .score-row:last-child{border-bottom:none}
-/* Timestamp */
 .ts{font-size:10px;color:rgba(245,240,232,0.3);text-align:center;padding:4px 0 2px;letter-spacing:.04em}
+.sync-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:#7ec87e;margin-right:4px;vertical-align:middle}
+.sync-dot.off{background:#e85d5d}
 </style>
 </head>
 <body>
 <div id="app">
   <div id="header">
     <div class="htitle"><span class="g">Golf<span class="b"> Bros</span></span></div>
-    <div class="hsub" id="statusMsg">Est. 2023 &middot; You'll find that......</div>
+    <div class="hsub" id="statusMsg">Est. 2023 &middot; Connecting...</div>
     <div id="installBanner" style="display:none;margin:6px 0 4px;text-align:center">
       <button onclick="installApp()" style="background:#e85d5d;border:none;border-radius:20px;padding:7px 22px;color:#f5f0e8;font-size:12px;font-weight:700;cursor:pointer">&#x2B07; Install App</button>
     </div>
@@ -140,7 +139,6 @@ input[type=text],input[type=number]{background:rgba(0,0,0,0.35);border:1px solid
   </div>
 </div>
 
-<!-- Add/Edit Modal -->
 <div class="overlay" id="addOv" style="display:none">
   <div class="modal">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
@@ -167,7 +165,6 @@ input[type=text],input[type=number]{background:rgba(0,0,0,0.35);border:1px solid
   </div>
 </div>
 
-<!-- Delete Modal -->
 <div class="doverlay" id="delOv" style="display:none">
   <div class="dmodal">
     <h3 style="color:#f5f0e8;font-size:16px;margin-bottom:8px">Delete this round?</h3>
@@ -179,12 +176,11 @@ input[type=text],input[type=number]{background:rgba(0,0,0,0.35);border:1px solid
   </div>
 </div>
 
-<!-- New Year Modal -->
 <div class="doverlay" id="nyOv" style="display:none">
   <div class="dmodal">
     <h3 style="color:#f5f0e8;font-size:16px;margin-bottom:8px">Start new league year?</h3>
-    <p style="color:rgba(245,240,232,0.4);font-size:13px;margin-bottom:8px">Archives the current 2026 season as the previous season and starts a fresh league with no rounds.</p>
-    <p style="color:#e85d5d;font-size:12px;margin-bottom:20px">Cannot be undone. Make sure everyone is happy with the final standings first.</p>
+    <p style="color:rgba(245,240,232,0.4);font-size:13px;margin-bottom:8px">Archives the current season and starts fresh.</p>
+    <p style="color:#e85d5d;font-size:12px;margin-bottom:20px">Cannot be undone.</p>
     <div style="display:flex;gap:8px">
       <button onclick="doNewYear()" style="flex:1;padding:11px;border-radius:20px;border:1px solid #f5f0e8;background:rgba(245,240,232,0.15);cursor:pointer;font-size:13px;font-weight:700;color:#f5f0e8">Yes, start new year</button>
       <button onclick="closeNY()" style="flex:1;padding:11px;border-radius:20px;border:1px solid rgba(245,240,232,0.12);background:none;cursor:pointer;font-size:14px;color:rgba(245,240,232,0.4)">Cancel</button>
@@ -192,7 +188,6 @@ input[type=text],input[type=number]{background:rgba(0,0,0,0.35);border:1px solid
   </div>
 </div>
 
-<!-- Profile Overlay -->
 <div class="profile-overlay" id="profileOv">
   <div class="profile-modal" id="profileModal"></div>
 </div>
@@ -213,13 +208,33 @@ var firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 var db = firebase.firestore();
 
+// Enable Firestore offline persistence so the app works without internet
+// and syncs automatically when connection is restored
+db.enablePersistence({synchronizeTabs:true}).catch(function(err){
+  // Multi-tab persistence not supported in all browsers — silent fallback is fine
+  if(err.code!=='failed-precondition'&&err.code!=='unimplemented'){
+    console.warn('Persistence error:',err);
+  }
+});
+
 var PL = ["Joe B","Joe N","Henry","Jenny"];
 var INI = {"Joe B":"JB","Joe N":"JN","Henry":"HE","Jenny":"JY"};
 var NICK = {"Joe B":"Big in Veg","Joe N":"The Green","Henry":"The Berries","Jenny":"Baby J"};
-var PRE = {"Joe B":[109,106,95,96,111],"Joe N":[138,120,121,104,109],"Henry":[96,103,92,101,90],"Jenny":[114,117,136,108,109]};
 var PHOTOS = {"Joe B":null,"Joe N":null,"Henry":null,"Jenny":null};
 var photoUploadTarget = null;
 var lastUpdated = null;
+
+// unsubscribe handle for the real-time listener
+var unsubscribeListener = null;
+// flag: are we currently mid-save? Prevents the listener echo from double-rendering
+var isSaving = false;
+
+var SCORES = {
+  "Joe B":[109,106,95,96,111],
+  "Joe N":[138,120,121,104,109],
+  "Henry":[96,103,92,101,90],
+  "Jenny":[114,117,136,108,109]
+};
 
 var D25 = [
   {date:"12/01/25",course:"Clandon Golf Club",double:0,results:{"Joe B":{pos:3,bonus:1,total:4,dns:0,winner:0,score:0},"Joe N":{pos:1,bonus:0,total:1,dns:0,winner:0,score:0},"Henry":{pos:2,bonus:0,total:2,dns:0,winner:0,score:0},"Jenny":{pos:0,bonus:0,total:0,dns:1,winner:0,score:0}}},
@@ -245,61 +260,47 @@ var D26 = [
 var ST = {r25:D25,r26:D26,season:"2026"};
 var editTgt=null,delTgt=null,formSeason="2026";
 
-// ---- Helpers ----
 function cloneArr(a){var b=[],i;for(i=0;i<a.length;i++){b.push(a[i]);}return b;}
 function arrSum(a){var s=0,i;for(i=0;i<a.length;i++){s+=a[i];}return s;}
 function cmpHyD(a,b){return b.hy-a.hy;}
 function cmpSc(a,b){return a.s-b.s;}
 
-function dispName(p){return NICK[p]?NICK[p]:p;}
-
 function avH(p,sz){
-  var img=PHOTOS[p]?'<img src="'+PHOTOS[p]+'" alt="'+p+'">':''+INI[p];
+  var img=PHOTOS[p]?'<img src="'+PHOTOS[p]+'" alt="'+p+'">':INI[p];
   return '<div class="av" style="width:'+sz+'px;height:'+sz+'px;font-size:'+Math.floor(sz*0.34)+'px">'+img+'</div>';
 }
 function med(i){return["1st","2nd","3rd"][i]||(i+1)+"th";}
 
-// ---- HC calculation ----
 function calcHC(sh){
   var i,p,a,best=9999,avgs={},hcs={};
-  for(i=0;i<PL.length;i++){p=PL[i];a=sh[p].length?arrSum(sh[p])/sh[p].length:9999;avgs[p]=a;if(a<best){best=a;}}
-  for(i=0;i<PL.length;i++){p=PL[i];hcs[p]=avgs[p]===9999?0:parseFloat(((avgs[p]-best)/2).toFixed(1));}
+  for(i=0;i<PL.length;i++){
+    p=PL[i];
+    a=sh[p].length?arrSum(sh[p])/sh[p].length:9999;
+    avgs[p]=a;
+    if(a<best){best=a;}
+  }
+  for(i=0;i<PL.length;i++){
+    p=PL[i];
+    hcs[p]=avgs[p]===9999?0:parseFloat(((avgs[p]-best)/2).toFixed(1));
+  }
   return hcs;
 }
-function getScoreHistory(){
-  // Build last 5 scores for each player from SEED + all r26 scores
-  var sh={},i,j,p,rr,tmp;
-  for(i=0;i<PL.length;i++){p=PL[i];sh[p]=cloneArr(SEED[p]);}
-  for(i=0;i<ST.r26.length;i++){
-    rr=ST.r26[i];
-    for(j=0;j<PL.length;j++){
-      p=PL[j];
-      if(!rr.results[p].dns&&rr.results[p].score>0){
-        tmp=cloneArr(sh[p]);
-        tmp.push(rr.results[p].score);
-        if(tmp.length>5){tmp=tmp.slice(tmp.length-5);}
-        sh[p]=tmp;
-      }
-    }
-  }
-  return sh;
-}
+
 function getHCBefore(roundIdx){
-  var sh={},i,j,p,rr,tmp;
-  for(i=0;i<PL.length;i++){p=PL[i];sh[p]=cloneArr(SEED[p]);}
-  for(i=0;i<roundIdx;i++){
+  var sh={},i,j,p,rr;
+  for(i=0;i<PL.length;i++){p=PL[i];sh[p]=cloneArr(SCORES[p]);}
+  for(i=ST.r26.length-1;i>=roundIdx;i--){
     rr=ST.r26[i];
     for(j=0;j<PL.length;j++){
       p=PL[j];
       if(!rr.results[p].dns&&rr.results[p].score>0){
-        tmp=cloneArr(sh[p]);tmp.push(rr.results[p].score);
-        if(tmp.length>5){tmp=tmp.slice(tmp.length-5);}
-        sh[p]=tmp;
+        if(sh[p].length>0){sh[p].pop();}
       }
     }
   }
   return calcHC(sh);
 }
+
 function calcHCPts(results,hc){
   var pm=[4,3,2,1],playing=[],i,p;
   for(i=0;i<PL.length;i++){p=PL[i];if(!results[p].dns&&results[p].score>0){playing.push(p);}}
@@ -308,11 +309,7 @@ function calcHCPts(results,hc){
   for(i=0;i<playing.length;i++){results[playing[i]].hcPts=pm[i]||1;results[playing[i]].hcWinner=i===0?1:0;}
   return results;
 }
-function getHCHistory(){
-  return getScoreHistory();
-}
 
-// ---- Standings calculations ----
 function avgR(rounds,req){
   var tot=0,i,j,p,r,c;
   for(i=0;i<PL.length;i++){p=PL[i];c=0;for(j=0;j<rounds.length;j++){r=rounds[j];if(req){if(!r.results[p].dns&&r.results[p].score>0){c++;}}else{if(!r.results[p].dns){c++;}}}tot+=c;}
@@ -337,13 +334,11 @@ function calcSt26h(){
   rows.sort(cmpHyD);return rows;
 }
 
-// ---- Player lifetime stats ----
 function playerStats(p){
-  var allRounds=[],i,r,sc,bon,wins=0,hcWins=0,best=999,sub90=0,sub95=0,sub100=0,birdies=0,totalRds=0;
-  for(i=0;i<ST.r25.length;i++){allRounds.push({r:ST.r25[i],is26:0});}
-  for(i=0;i<ST.r26.length;i++){allRounds.push({r:ST.r26[i],is26:1});}
+  var i,r,sc,bon,wins=0,hcWins=0,best=999,sub90=0,sub95=0,sub100=0,birdies=0,totalRds=0;
+  var allRounds=ST.r25.concat(ST.r26);
   for(i=0;i<allRounds.length;i++){
-    r=allRounds[i].r;
+    r=allRounds[i];
     if(r.results[p].dns){continue;}
     totalRds++;
     sc=r.results[p].score||0;
@@ -355,8 +350,6 @@ function playerStats(p){
       if(sc<100){sub100++;}
       if(sc<95){sub95++;}
       if(sc<90){sub90++;}
-      // Birdie detection: if score>99 and has bonus, must be birdie(s)
-      // if score<100 and bonus>expected threshold, remainder is birdies
       if(sc>=100&&bon>0){birdies+=bon;}
       else if(sc<100&&sc>=95&&bon>1){birdies+=bon-1;}
       else if(sc<95&&sc>=90&&bon>2){birdies+=bon-2;}
@@ -366,7 +359,6 @@ function playerStats(p){
   return{totalRds:totalRds,wins:wins,hcWins:hcWins,best:best===999?'-':best,sub90:sub90,sub95:sub95,sub100:sub100,birdies:birdies};
 }
 
-// ---- Table builder ----
 function tblHTML(rows,keys,lbls,his,dms,fmts,note){
   var h='<div class="card"><div class="twrap"><table><thead><tr><th class="L" style="width:36px">Pos</th><th class="L">Player</th>';
   var i,j,val,disp,cls,fw;
@@ -384,24 +376,23 @@ function tblHTML(rows,keys,lbls,his,dms,fmts,note){
   return h;
 }
 
-// ---- Tab switching ----
 function swTab(id,btn){
   document.querySelectorAll('.tab-pg').forEach(function(el){el.style.display='none';});
   document.querySelectorAll('.tbtn').forEach(function(el){el.classList.remove('on');});
-  document.getElementById(id).style.display='block';btn.classList.add('on');
+  document.getElementById(id).style.display='block';
+  btn.classList.add('on');
 }
 function setSeason(s){ST.season=s;render();}
 function render(){renderStandings();renderHistory();renderHandicaps();renderPlayers();}
 
-// ---- Render Standings ----
 function renderStandings(){
   var el=document.getElementById('standings'),s=ST.season,h='';
   h+='<div class="pills"><button class="pl'+(s==="2026"?" on":"")+'" onclick="setSeason(\'2026\')">2026</button><button class="pl'+(s==="2025"?" on":"")+'" onclick="setSeason(\'2025\')">2025</button></div>';
-  if(lastUpdated){h+='<div class="ts">Last updated: '+lastUpdated+'</div>';}
+  if(lastUpdated){h+='<div class="ts"><span class="sync-dot"></span>Live \u00B7 Last saved: '+lastUpdated+'</div>';}
   if(s==="2025"){
     h+='<p style="font-size:11px;color:rgba(245,240,232,.4);margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em">'+ST.r25.length+' rounds &middot; ranked by hybrid score</p>';
     h+=tblHTML(calcSt25(),["rds","pos","bon","tot","wins","hy"],["Rds","Pos","Bon","Total","W","Hybrid"],[0,0,0,0,0,1],[1,0,0,0,0,0],["","","","","","h"],"Hybrid = ((pos+bonus)/rds) x (1-exp(-rds/avg))");
-  } else {
+  }else{
     h+='<p style="font-size:11px;color:rgba(245,240,232,.4);margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em">'+ST.r26.length+' rounds &middot; two parallel leagues</p>';
     h+='<div class="slbl"><h3>Stroke play</h3></div>';
     h+=tblHTML(calcSt26s(),["rds","pos","bon","tot","wins","avg","hy"],["Rds","Pos","Bon","Total","W","Avg","Hybrid"],[0,0,0,0,0,0,1],[1,0,0,0,0,1,0],["","","","","","a","h"],"Hybrid = ((pos+bonus)/rds) x (1-exp(-rds/avg))");
@@ -411,58 +402,80 @@ function renderStandings(){
   el.innerHTML=h;
 }
 
-// ---- Render History ----
 function rcHTML(round,idx,sk){
   var h='<div class="rcard'+(round.double?' dbl':'')+'"><div class="rhdr"><div style="min-width:0"><div style="display:flex;align-items:center;gap:6px"><div style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+round.course+'</div>';
   if(round.double){h+='<span class="badge2x">2x</span>';}
-  h+='</div><div style="font-size:11px;color:rgba(245,240,232,0.4)">'+round.date+'</div></div><div style="display:flex;gap:6px;flex-shrink:0"><button class="bedit" onclick="openEdit('+idx+',\''+sk+'\')">Edit</button><button class="bdel" onclick="openDel('+idx+',\''+sk+'\')">Del</button></div></div><div class="rgrid">';
+  h+='</div><div style="font-size:11px;color:rgba(245,240,232,0.4)">'+round.date+'</div></div>';
+  h+='<div style="display:flex;gap:6px;flex-shrink:0"><button class="bedit" onclick="openEdit('+idx+',\''+sk+'\')">Edit</button><button class="bdel" onclick="openDel('+idx+',\''+sk+'\')">Del</button></div></div>';
+  h+='<div class="rgrid">';
   for(var i=0;i<PL.length;i++){
     var p=PL[i],r=round.results[p];
     h+='<div class="rp"><div class="rpn">'+avH(p,20)+'<span>'+NICK[p]+'</span>'+(r.winner?'<span style="margin-left:auto;color:#7ec87e;font-size:10px">W</span>':'')+'</div>';
     if(r.dns){h+='<div class="rpdns">DNS</div>';}
-    else{if(r.score>0){h+='<div class="rpsc">'+r.score+'</div>';}h+='<div class="rppt">'+r.pos+'pos'+(r.bonus?'+'+r.bonus+'b':'')+'=<span> '+r.total+'pts</span></div>';if(sk==="2026"&&r.hcPts){h+='<div class="rphc">HC: '+r.hcPts+'pts'+(r.hcWinner?' HC Win':'')+'</div>';}}
+    else{
+      if(r.score>0){h+='<div class="rpsc">'+r.score+'</div>';}
+      h+='<div class="rppt">'+r.pos+'pos'+(r.bonus?'+'+r.bonus+'b':'')+'=<span> '+r.total+'pts</span></div>';
+      if(sk==="2026"&&r.hcPts){h+='<div class="rphc">HC: '+r.hcPts+'pts'+(r.hcWinner?' HC Win':'')+'</div>';}
+    }
     h+='</div>';
   }
-  h+='</div></div>';return h;
+  h+='</div></div>';
+  return h;
 }
 function renderHistory(){
   var el=document.getElementById('history'),s=ST.season,h='';
-  h+='<div class="hbar"><div class="pills" style="margin:0"><button class="pl'+(s==="2026"?" on":"")+'" onclick="setSeason(\'2026\')">2026</button><button class="pl'+(s==="2025"?" on":"")+'" onclick="setSeason(\'2025\')">2025</button></div><div style="display:flex;gap:8px"><button class="addbtn" onclick="openAdd()">+ Add</button><button class="newyr" onclick="document.getElementById(\'nyOv\').style.display=\'flex\'">New Year</button></div></div>';
+  h+='<div class="hbar"><div class="pills" style="margin:0">';
+  h+='<button class="pl'+(s==="2026"?" on":"")+'" onclick="setSeason(\'2026\')">2026</button>';
+  h+='<button class="pl'+(s==="2025"?" on":"")+'" onclick="setSeason(\'2025\')">2025</button>';
+  h+='</div><div style="display:flex;gap:8px">';
+  h+='<button class="addbtn" onclick="openAdd()">+ Add</button>';
+  h+='<button class="newyr" onclick="document.getElementById(\'nyOv\').style.display=\'flex\'">New Year</button>';
+  h+='</div></div>';
   var rounds=s==="2026"?ST.r26:ST.r25;
   if(!rounds.length){h+='<p style="color:rgba(245,240,232,.4);font-size:13px">No rounds yet.</p>';}
   else{for(var i=rounds.length-1;i>=0;i--){h+=rcHTML(rounds[i],i,s);}}
   el.innerHTML=h;
 }
 
-// ---- Render Handicaps ----
 function renderHandicaps(){
-  var sh=getHCHistory(),i,j,p,hcs,avgs,t,rnd,h;
-  hcs=calcHC(sh);avgs={};
-  for(i=0;i<PL.length;i++){p=PL[i];t=arrSum(sh[p]);avgs[p]=parseFloat((t/sh[p].length).toFixed(1));}
-  var shStep={},hcHistory=[];
-  for(i=0;i<PL.length;i++){p=PL[i];shStep[p]=cloneArr(PRE[p]);}
+  var hcs=calcHC(SCORES);
+  var avgs={},i,j,p,t,rnd,h;
+  for(i=0;i<PL.length;i++){p=PL[i];t=arrSum(SCORES[p]);avgs[p]=parseFloat((t/SCORES[p].length).toFixed(1));}
+  var hcHistory=[];
   for(i=0;i<ST.r26.length;i++){
-    var rr=ST.r26[i];
-    hcHistory.push({date:rr.date,course:rr.course,hc:calcHC(shStep)});
-    for(j=0;j<PL.length;j++){p=PL[j];if(!rr.results[p].dns&&rr.results[p].score>0){var tmp=cloneArr(shStep[p]);tmp.push(rr.results[p].score);if(tmp.length>5){tmp=tmp.slice(tmp.length-5);}shStep[p]=tmp;}}
+    hcHistory.push({date:ST.r26[i].date,course:ST.r26[i].course,hc:getHCBefore(i)});
   }
-  h='<div class="slbl"><h3>Current Handicaps</h3><p>Best player=0 &middot; others=(avg gap)/2 &middot; recalculated each round</p></div><div class="hcgrid">';
+  h='<div class="slbl"><h3>Current Handicaps</h3><p>Best player=0 &middot; others=(avg gap)/2 &middot; recalculated each round</p></div>';
+  h+='<div class="hcgrid">';
   for(i=0;i<PL.length;i++){
     p=PL[i];
-    h+='<div class="hccard" onclick="openProfile(\''+p+'\')" style="cursor:pointer"><div style="display:flex;align-items:center;gap:8px;margin-bottom:9px">'+avH(p,32)+'<div><div style="font-weight:700;font-size:14px">'+p+'</div><div style="font-size:11px;color:#e85d5d">'+NICK[p]+'</div><div style="font-size:13px">HC: <strong style="color:#e85d5d">'+hcs[p]+'</strong></div></div></div>';
-    h+='<div style="border-top:1px solid rgba(245,240,232,.12);padding-top:8px"><div style="font-size:10px;color:rgba(245,240,232,.4);margin-bottom:5px;text-transform:uppercase;letter-spacing:.05em">Last 5 scores</div><div class="schips">';
-    for(j=0;j<sh[p].length;j++){h+='<span class="chip">'+sh[p][j]+'</span>';}
-    h+='</div><div style="font-size:11px;color:rgba(245,240,232,.4)">Avg: <strong style="color:#f5f0e8">'+avgs[p]+'</strong></div></div></div>';
+    h+='<div class="hccard" onclick="openProfile(\''+p+'\')" style="cursor:pointer">';
+    h+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:9px">'+avH(p,32);
+    h+='<div><div style="font-weight:700;font-size:14px">'+p+'</div>';
+    h+='<div style="font-size:11px;color:#e85d5d">'+NICK[p]+'</div>';
+    h+='<div style="font-size:13px">HC: <strong style="color:#e85d5d">'+hcs[p]+'</strong></div></div></div>';
+    h+='<div style="border-top:1px solid rgba(245,240,232,.12);padding-top:8px">';
+    h+='<div style="font-size:10px;color:rgba(245,240,232,.4);margin-bottom:5px;text-transform:uppercase;letter-spacing:.05em">Last 5 scores</div>';
+    h+='<div class="schips">';
+    for(j=0;j<SCORES[p].length;j++){h+='<span class="chip">'+SCORES[p][j]+'</span>';}
+    h+='</div>';
+    h+='<div style="font-size:11px;color:rgba(245,240,232,.4)">Avg: <strong style="color:#f5f0e8">'+avgs[p]+'</strong></div>';
+    h+='</div></div>';
   }
   h+='</div>';
   if(hcHistory.length){
-    h+='<div class="slbl" style="margin-top:16px"><h3>HC entering each 2026 round</h3></div><div class="card"><div class="twrap"><table><thead><tr><th class="L">Round</th>';
+    h+='<div class="slbl" style="margin-top:16px"><h3>HC entering each 2026 round</h3></div>';
+    h+='<div class="card"><div class="twrap"><table><thead><tr><th class="L">Round</th>';
     for(i=0;i<PL.length;i++){h+='<th>'+INI[PL[i]]+'</th>';}
     h+='</tr></thead><tbody>';
     for(i=0;i<hcHistory.length;i++){
       rnd=hcHistory[i];
       h+='<tr><td class="L" style="font-size:11px"><div style="font-weight:600">'+rnd.course.split(" ")[0]+'</div><div style="color:rgba(245,240,232,.4);font-size:10px">'+rnd.date+'</div></td>';
-      for(j=0;j<PL.length;j++){p=PL[j];var isZ=rnd.hc[p]===0;h+='<td style="color:'+(isZ?'#e85d5d':'#f5f0e8')+';font-weight:'+(isZ?700:400)+'">'+rnd.hc[p]+'</td>';}
+      for(j=0;j<PL.length;j++){
+        p=PL[j];
+        var isZ=rnd.hc[p]===0;
+        h+='<td style="color:'+(isZ?'#e85d5d':'#f5f0e8')+';font-weight:'+(isZ?700:400)+'">'+rnd.hc[p]+'</td>';
+      }
       h+='</tr>';
     }
     h+='</tbody></table></div></div>';
@@ -470,12 +483,13 @@ function renderHandicaps(){
   document.getElementById('handicaps').innerHTML=h;
 }
 
-// ---- Render Players ----
 function renderPlayers(){
   var h='<div class="slbl"><h3>Players</h3><p>Tap a player to view their profile</p></div>';
   h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
-  for(var i=0;i<PL.length;i++){
-    var p=PL[i],st=playerStats(p);
+  var i,p,st;
+  for(i=0;i<PL.length;i++){
+    p=PL[i];
+    st=playerStats(p);
     h+='<div onclick="openProfile(\''+p+'\')" style="background:rgba(0,0,0,0.22);border:1px solid rgba(245,240,232,0.12);border-radius:12px;padding:14px;cursor:pointer;text-align:center">';
     h+='<div style="display:flex;justify-content:center;margin-bottom:8px">'+avH(p,52)+'</div>';
     h+='<div style="font-weight:700;font-size:15px">'+p+'</div>';
@@ -490,7 +504,6 @@ function renderPlayers(){
   document.getElementById('players').innerHTML=h;
 }
 
-// ---- Profile overlay ----
 function openProfile(p){
   var st=playerStats(p);
   var photo=PHOTOS[p]?'<img src="'+PHOTOS[p]+'" alt="'+p+'" style="width:100%;height:100%;object-fit:cover">':INI[p];
@@ -512,15 +525,14 @@ function openProfile(p){
   h+='<div class="stat-box"><div class="stat-val red">'+st.sub95+'</div><div class="stat-lbl">Sub 95</div></div>';
   h+='<div class="stat-box"><div class="stat-val red">'+st.sub90+'</div><div class="stat-lbl">Sub 90</div></div>';
   h+='</div>';
-  // Recent scores
   var allR=[],i,r;
-  for(i=0;i<ST.r25.length;i++){if(!ST.r25[i].results[p].dns&&ST.r25[i].results[p].score>0)allR.push({course:ST.r25[i].course,date:ST.r25[i].date,score:ST.r25[i].results[p].score});}
-  for(i=0;i<ST.r26.length;i++){if(!ST.r26[i].results[p].dns&&ST.r26[i].results[p].score>0)allR.push({course:ST.r26[i].course,date:ST.r26[i].date,score:ST.r26[i].results[p].score});}
+  for(i=0;i<ST.r26.length;i++){r=ST.r26[i];if(!r.results[p].dns&&r.results[p].score>0){allR.push({course:r.course,date:r.date,score:r.results[p].score});}}
   if(allR.length){
     h+='<div class="slbl" style="margin:16px 0 10px"><h3>Round Scores</h3></div>';
     var recent=allR.slice().reverse().slice(0,10);
     for(i=0;i<recent.length;i++){
-      h+='<div class="score-row"><div><div style="font-weight:600">'+recent[i].course+'</div><div style="font-size:11px;color:rgba(245,240,232,0.4)">'+recent[i].date+'</div></div><div style="font-size:20px;font-weight:700;color:'+(recent[i].score<90?'#e85d5d':recent[i].score<100?'#7ec87e':'#f5f0e8')+'">'+recent[i].score+'</div></div>';
+      h+='<div class="score-row"><div><div style="font-weight:600">'+recent[i].course+'</div><div style="font-size:11px;color:rgba(245,240,232,0.4)">'+recent[i].date+'</div></div>';
+      h+='<div style="font-size:20px;font-weight:700;color:'+(recent[i].score<90?'#e85d5d':recent[i].score<100?'#7ec87e':'#f5f0e8')+'">'+recent[i].score+'</div></div>';
     }
   }
   h+='</div>';
@@ -535,43 +547,50 @@ function handlePhotoUpload(e){
   var reader=new FileReader();
   reader.onload=function(ev){
     PHOTOS[photoUploadTarget]=ev.target.result;
-    persistPhotos();
-    render();
+    persist();
+    // Profile overlay re-opens with fresh photo after persist triggers re-render
     openProfile(photoUploadTarget);
   };
   reader.readAsDataURL(file);
   e.target.value='';
 }
 
-// ---- Modal logic ----
 function openAdd(){
   editTgt=null;formSeason=ST.season;
   document.getElementById('mTitle').textContent='Add round \u00B7 '+formSeason;
-  document.getElementById('mHint').textContent=formSeason==="2026"?"Gross score per player. Positions auto-calculated. Enter bonus pts manually.":"Score per player. Positions auto-calculated.";
-  document.getElementById('fDate').value='';document.getElementById('fCourse').value='';document.getElementById('fDouble').checked=false;
-  buildPInputs({});document.getElementById('addOv').style.display='flex';
+  document.getElementById('mHint').textContent=formSeason==="2026"?"Gross score per player. Blank=DNS. Positions auto-calculated. Enter bonus pts manually.":"Score per player. Blank=DNS. Positions auto-calculated.";
+  document.getElementById('fDate').value='';
+  document.getElementById('fCourse').value='';
+  document.getElementById('fDouble').checked=false;
+  buildPInputs({});
+  document.getElementById('addOv').style.display='flex';
 }
 function openEdit(idx,sk){
   var round=sk==="2026"?ST.r26[idx]:ST.r25[idx],ex={},i,p,r;
   editTgt={idx:idx,sk:sk};formSeason=sk;
   document.getElementById('mTitle').textContent='Edit round \u00B7 '+sk;
-  document.getElementById('mHint').textContent=sk==="2026"?"Gross score per player. Positions auto-calculated.":"Score per player. Positions auto-calculated.";
-  document.getElementById('fDate').value=round.date;document.getElementById('fCourse').value=round.course;document.getElementById('fDouble').checked=round.double?true:false;
+  document.getElementById('mHint').textContent=sk==="2026"?"Gross score per player. Blank=DNS. Positions auto-calculated.":"Score per player. Blank=DNS. Positions auto-calculated.";
+  document.getElementById('fDate').value=round.date;
+  document.getElementById('fCourse').value=round.course;
+  document.getElementById('fDouble').checked=round.double?true:false;
   for(i=0;i<PL.length;i++){p=PL[i];r=round.results[p];if(!r.dns){ex[p]={score:r.score||0,bonus:r.bonus||0};}}
-  buildPInputs(ex);document.getElementById('addOv').style.display='flex';
+  buildPInputs(ex);
+  document.getElementById('addOv').style.display='flex';
 }
 function buildPInputs(ex){
   var h='',i,p,sc,bn;
   for(i=0;i<PL.length;i++){
-    p=PL[i];sc=(ex[p]&&ex[p].score>0)?ex[p].score:'';bn=(ex[p]&&ex[p].bonus)?ex[p].bonus:'';
-    h+='<div class="pgrid"><div style="display:flex;align-items:center;gap:6px">'+avH(p,26)+'<span style="font-size:13px;font-weight:600;min-width:42px">'+NICK[p]+'</span></div>';
+    p=PL[i];
+    sc=(ex[p]&&ex[p].score>0)?ex[p].score:'';
+    bn=(ex[p]&&ex[p].bonus)?ex[p].bonus:'';
+    h+='<div class="pgrid">';
+    h+='<div style="display:flex;align-items:center;gap:6px">'+avH(p,26)+'<span style="font-size:13px;font-weight:600;min-width:60px">'+NICK[p]+'</span></div>';
     h+='<input type="number" id="sc'+i+'" placeholder="Score" value="'+sc+'">';
     h+='<input type="number" id="bn'+i+'" placeholder="Bonus" value="'+bn+'">';
-    h+='<div class="dns-chk"><input type="checkbox" id="dns'+i+'"'+(ex[p]===undefined&&sc===''?' checked':'')+' onchange="toggleDNS('+i+')"><label for="dns'+i+'">DNS</label></div>';
+    h+='<div class="dns-chk"><input type="checkbox" id="dns'+i+'" onchange="toggleDNS('+i+')"><label for="dns'+i+'">DNS</label></div>';
     h+='</div>';
   }
   document.getElementById('pInputs').innerHTML=h;
-  // Uncheck DNS if they have scores prefilled
   for(i=0;i<PL.length;i++){if(ex[PL[i]]){document.getElementById('dns'+i).checked=false;}}
 }
 function toggleDNS(i){
@@ -581,15 +600,18 @@ function toggleDNS(i){
   if(isDNS){document.getElementById('sc'+i).value='';document.getElementById('bn'+i).value='';}
 }
 function closeModal(){document.getElementById('addOv').style.display='none';}
+
 function saveRound(){
-  var date=document.getElementById('fDate').value,course=document.getElementById('fCourse').value,dbl=document.getElementById('fDouble').checked?1:0;
+  var date=document.getElementById('fDate').value;
+  var course=document.getElementById('fCourse').value;
+  var dbl=document.getElementById('fDouble').checked?1:0;
   if(!date||!course){return;}
   var scored=[],i,p,v,pm=[4,3,2,1],results={},j,bonus,nr;
   for(i=0;i<PL.length;i++){
     p=PL[i];
     if(document.getElementById('dns'+i).checked){
       results[p]={pos:0,bonus:0,total:0,dns:1,winner:0,score:0,hcPts:0,hcWinner:0};
-    } else {
+    }else{
       v=parseFloat(document.getElementById('sc'+i).value)||0;
       if(v>0){scored.push({p:p,s:v,i:i});}
       else{results[p]={pos:0,bonus:0,total:0,dns:1,winner:0,score:0,hcPts:0,hcWinner:0};}
@@ -607,74 +629,146 @@ function saveRound(){
   if(formSeason==="2026"){
     var ridx=editTgt?editTgt.idx:ST.r26.length;
     results=calcHCPts(results,getHCBefore(ridx));
-  }
-  // Update SCORES with new round scores
-  if(formSeason==="2026"){
-    var ii,pp;
-    for(ii=0;ii<scored.length;ii++){
-      pp=scored[ii].p;
-      SCORES[pp].push(scored[ii].s);
-      if(SCORES[pp].length>5){SCORES[pp]=SCORES[pp].slice(SCORES[pp].length-5);}
+    for(i=0;i<scored.length;i++){
+      p=scored[i].p;
+      SCORES[p]=cloneArr(SCORES[p]);
+      SCORES[p].push(scored[i].s);
+      if(SCORES[p].length>5){SCORES[p]=SCORES[p].slice(SCORES[p].length-5);}
     }
   }
   nr={date:date,course:course,double:dbl,results:results};
   if(formSeason==="2026"){if(editTgt){ST.r26[editTgt.idx]=nr;}else{ST.r26.push(nr);}}
   else{if(editTgt){ST.r25[editTgt.idx]=nr;}else{ST.r25.push(nr);}}
-  closeModal();persist();render();
+  closeModal();
+  persist();
+  // render() is called inside persist() via the onSnapshot callback on the saving device,
+  // and automatically on all other devices when Firestore pushes the update
 }
+
 function openDel(idx,sk){delTgt={idx:idx,sk:sk};document.getElementById('delOv').style.display='flex';}
 function closeDel(){document.getElementById('delOv').style.display='none';delTgt=null;}
-function confirmDel(){if(!delTgt){return;}if(delTgt.sk==="2026"){ST.r26.splice(delTgt.idx,1);}else{ST.r25.splice(delTgt.idx,1);}closeDel();persist();render();}
+function confirmDel(){
+  if(!delTgt){return;}
+  if(delTgt.sk==="2026"){ST.r26.splice(delTgt.idx,1);}
+  else{ST.r25.splice(delTgt.idx,1);}
+  closeDel();persist();
+}
 function closeNY(){document.getElementById('nyOv').style.display='none';}
-function doNewYear(){ST.r25=ST.r26.slice();ST.r26=[];ST.season="2026";closeNY();persist();render();}
+function doNewYear(){ST.r25=ST.r26.slice();ST.r26=[];ST.season="2026";closeNY();persist();}
 
-// ---- Firebase ----
+// ---- Firebase: persist + real-time listener ----
 function showStatus(msg,ok){
   var el=document.getElementById('statusMsg');
   el.textContent=msg;el.className='hsub'+(ok?' ok':'');
-  if(ok){setTimeout(function(){el.textContent='Est. 2023 \u00B7 You\'ll find that......';el.className='hsub';},2500);}
 }
+
 function persist(){
   var now=new Date();
   lastUpdated=now.toLocaleDateString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
-  db.collection('league').doc('data').set({r25:ST.r25,r26:ST.r26,scores:SCORES,photos:PHOTOS,lastUpdated:lastUpdated,v:3}).then(function(){
-    showStatus('Saved for all players',true);render();
-  }).catch(function(){showStatus('Save failed - check connection',false);});
+  isSaving=true;
+  showStatus('Saving...',false);
+  db.collection('league').doc('data').set({
+    r25:ST.r25,
+    r26:ST.r26,
+    scores:SCORES,
+    photos:PHOTOS,
+    lastUpdated:lastUpdated,
+    v:4
+  }).then(function(){
+    // isSaving reset after a short delay to allow the onSnapshot echo to be ignored
+    setTimeout(function(){isSaving=false;},800);
+    showStatus('\u2713 Saved \u00B7 all devices updating',true);
+    setTimeout(function(){showStatus('\u25CF Live \u00B7 '+lastUpdated,true);},2500);
+  }).catch(function(){
+    isSaving=false;
+    showStatus('Save failed \u2013 check connection',false);
+  });
 }
-function persistPhotos(){
-  db.collection('league').doc('data').update({photos:PHOTOS}).catch(function(){});
-}
-function loadData(){
-  showStatus('Loading...',false);
-  db.collection('league').doc('data').get().then(function(doc){
-    if(doc.exists){
-      var d=doc.data();
-      if(d.v&&d.v>=3){
-        if(d.r25){ST.r25=d.r25;}
-        if(d.r26){ST.r26=d.r26;}
-        if(d.scores){var k;for(k in d.scores){if(SCORES.hasOwnProperty(k)){SCORES[k]=d.scores[k];}}}
+
+function applyRemoteData(d){
+  // Load all fields from Firestore into local state
+  if(d.v&&d.v>=4){
+    if(d.r25){ST.r25=d.r25;}
+    if(d.r26){ST.r26=d.r26;}
+    if(d.scores){
+      var k;
+      for(k in d.scores){
+        if(SCORES.hasOwnProperty(k)){SCORES[k]=d.scores[k];}
       }
-      if(d.photos){var k2;for(k2 in d.photos){if(PHOTOS.hasOwnProperty(k2)){PHOTOS[k2]=d.photos[k2];}}}
-      if(d.lastUpdated){lastUpdated=d.lastUpdated;}
     }
-    showStatus('Est. 2023 \u00B7 You\'ll find that......',false);render();
-  }).catch(function(){showStatus('Est. 2023 \u00B7 You\'ll find that......',false);render();});
+  }
+  if(d.photos){
+    var k2;
+    for(k2 in d.photos){
+      if(PHOTOS.hasOwnProperty(k2)){PHOTOS[k2]=d.photos[k2];}
+    }
+  }
+  if(d.lastUpdated){lastUpdated=d.lastUpdated;}
 }
 
+function startListener(){
+  // Cancel any existing listener before starting a new one
+  if(unsubscribeListener){unsubscribeListener();}
 
+  unsubscribeListener = db.collection('league').doc('data').onSnapshot(
+    {includeMetadataChanges:false}, // only fire on confirmed server writes
+    function(doc){
+      if(!doc.exists){
+        // First run — seed with default data already in ST / SCORES
+        showStatus('\u25CF Live',true);
+        render();
+        return;
+      }
+      var d=doc.data();
+
+      if(isSaving){
+        // This echo is from our own save — just update status, don't re-apply
+        render();
+        return;
+      }
+
+      // Remote update from another device — apply it and re-render
+      applyRemoteData(d);
+      showStatus('\u25CF Live \u00B7 updated from another device',true);
+      setTimeout(function(){
+        showStatus('\u25CF Live \u00B7 '+(lastUpdated||''),true);
+      },3000);
+      render();
+
+      // If a profile overlay is open, refresh it with the latest photo
+      var ov=document.getElementById('profileOv');
+      if(ov&&ov.classList.contains('open')){
+        // Find which player is open by checking the name in the modal
+        var nameEl=document.querySelector('.profile-name');
+        if(nameEl){openProfile(nameEl.textContent);}
+      }
+    },
+    function(err){
+      // Listener error (e.g. offline) — show disconnected indicator
+      showStatus('\u25CF Offline \u2013 changes save when reconnected',false);
+      console.warn('Firestore listener error:',err);
+    }
+  );
+}
 
 // ---- Pull to refresh ----
 var ptrStart=0,ptrActive=false;
 document.getElementById('content').addEventListener('touchstart',function(e){
   if(this.scrollTop===0){ptrStart=e.touches[0].clientY;ptrActive=true;}
-},{ passive:true });
+},{passive:true});
 document.getElementById('content').addEventListener('touchmove',function(e){
   if(ptrActive&&e.touches[0].clientY-ptrStart>60){document.getElementById('ptrMsg').style.display='block';}
-},{ passive:true });
+},{passive:true});
 document.getElementById('content').addEventListener('touchend',function(){
   if(ptrActive&&document.getElementById('ptrMsg').style.display==='block'){
     document.getElementById('ptrMsg').style.display='none';
-    loadData();
+    // Pull-to-refresh just forces a manual read on top of the live listener
+    db.collection('league').doc('data').get().then(function(doc){
+      if(doc.exists){applyRemoteData(doc.data());}
+      render();
+      showStatus('\u25CF Live \u00B7 refreshed',true);
+      setTimeout(function(){showStatus('\u25CF Live \u00B7 '+(lastUpdated||''),true);},2000);
+    });
   }
   ptrActive=false;ptrStart=0;
 });
@@ -689,9 +783,16 @@ window.addEventListener('appinstalled',function(){document.getElementById('insta
 function installApp(){if(!deferredPrompt){return;}deferredPrompt.prompt();deferredPrompt.userChoice.then(function(r){if(r.outcome==='accepted'){document.getElementById('installBanner').style.display='none';}deferredPrompt=null;});}
 
 // ---- Service Worker ----
-if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){});});}
+if('serviceWorker' in navigator){
+  window.addEventListener('load',function(){
+    navigator.serviceWorker.register('sw.js').catch(function(){});
+  });
+}
 
-loadData();
+// ---- Boot ----
+showStatus('Connecting...',false);
+render(); // render from seed data immediately so UI isn't blank
+startListener(); // then connect the live listener
 </script>
 </body>
 </html>
