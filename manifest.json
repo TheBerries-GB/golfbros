@@ -2,7 +2,7 @@
   "name": "Golf Bros",
   "short_name": "Golf Bros",
   "description": "Golf Bros League Tracker",
-  "start_url": "/",
+  "start_url": "/golfbros/",
   "display": "standalone",
   "background_color": "#2d5a27",
   "theme_color": "#1a3a16",
