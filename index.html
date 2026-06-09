@@ -790,9 +790,58 @@ if('serviceWorker' in navigator){
 }
 
 // ---- Boot ----
+// Correct scores: the canonical last-5 per player derived from D26 round scores.
+// If Firestore has drifted (scores got pushed multiple times), this resets them.
+var CORRECT_SCORES = {
+  "Joe B":[109,106,95,96,111],
+  "Joe N":[138,120,121,104,109],
+  "Henry":[96,103,92,101,90],
+  "Jenny":[114,117,136,108,109]
+};
+
+function scoresMatch(a,b){
+  if(a.length!==b.length){return false;}
+  for(var i=0;i<a.length;i++){if(a[i]!==b[i]){return false;}}
+  return true;
+}
+
 showStatus('Connecting...',false);
 render(); // render from seed data immediately so UI isn't blank
-startListener(); // then connect the live listener
+
+// Read current Firestore scores first; fix if wrong, then start the live listener
+db.collection('league').doc('data').get().then(function(doc){
+  if(doc.exists){
+    var d=doc.data();
+    var needsFix=false;
+    if(d.scores){
+      var k;
+      for(k in CORRECT_SCORES){
+        if(d.scores[k]&&!scoresMatch(d.scores[k],CORRECT_SCORES[k])){
+          needsFix=true;
+          break;
+        }
+      }
+    }
+    if(needsFix){
+      // Apply all remote data first (rounds, photos etc) but override scores with correct values
+      applyRemoteData(d);
+      SCORES={"Joe B":cloneArr(CORRECT_SCORES["Joe B"]),"Joe N":cloneArr(CORRECT_SCORES["Joe N"]),"Henry":cloneArr(CORRECT_SCORES["Henry"]),"Jenny":cloneArr(CORRECT_SCORES["Jenny"])};
+      // Write the corrected scores back to Firestore
+      isSaving=true;
+      db.collection('league').doc('data').update({scores:SCORES}).then(function(){
+        setTimeout(function(){isSaving=false;},800);
+        showStatus('Scores corrected \u2013 syncing',true);
+        render();
+      }).catch(function(){isSaving=false;});
+    }else{
+      if(doc.exists){applyRemoteData(d);}
+      render();
+    }
+  }
+  startListener();
+}).catch(function(){
+  startListener();
+});
 </script>
 </body>
 </html>
