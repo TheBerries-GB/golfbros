@@ -223,11 +223,14 @@ var NICK = {"Joe B":"Big in Veg","Joe N":"The Green","Henry":"The Berries","Jenn
 var PHOTOS = {"Joe B":null,"Joe N":null,"Henry":null,"Jenny":null};
 var photoUploadTarget = null;
 var lastUpdated = null;
+var unsubscribeProfileListener = null; // separate listener for photos+nicks
 
 // unsubscribe handle for the real-time listener
 var unsubscribeListener = null;
-// flag: are we currently mid-save? Prevents the listener echo from double-rendering
+// flag: are we currently mid-save on the DATA doc? Prevents listener echo.
 var isSaving = false;
+// flag: are we currently mid-save on the PROFILE doc?
+var isProfileSaving = false;
 
 var SCORES = {
   "Joe B":[109,106,95,96,111],
@@ -511,7 +514,16 @@ function openProfile(p){
   h+='<button class="profile-close" onclick="closeProfile()">&#x2715;</button>';
   h+='<div class="profile-av" onclick="triggerPhotoUpload(\''+p+'\')">'+photo+'<div class="profile-av-edit">&#x1F4F7;</div></div>';
   h+='<div class="profile-name">'+p+'</div>';
-  h+='<div class="profile-nick">'+NICK[p]+'</div>';
+  // Editable nickname
+  h+='<div style="display:flex;align-items:center;justify-content:center;gap:6px;margin-top:4px">';
+  h+='<div class="profile-nick" id="nickDisplay_'+p+'">'+NICK[p]+'</div>';
+  h+='<button onclick="editNick(\''+p+'\')" style="background:none;border:1px solid rgba(245,240,232,0.25);border-radius:8px;padding:2px 7px;color:rgba(245,240,232,0.45);font-size:10px;cursor:pointer">Edit</button>';
+  h+='</div>';
+  h+='<div id="nickEdit_'+p+'" style="display:none;margin-top:6px;padding:0 20px">';
+  h+='<div style="display:flex;gap:6px">';
+  h+='<input type="text" id="nickInput_'+p+'" value="'+NICK[p]+'" style="flex:1;font-size:13px;padding:7px 10px">';
+  h+='<button onclick="saveNick(\''+p+'\')" style="background:#e85d5d;border:none;border-radius:8px;padding:7px 12px;color:#f5f0e8;font-size:12px;font-weight:700;cursor:pointer">Save</button>';
+  h+='</div></div>';
   h+='</div>';
   h+='<div class="profile-body">';
   h+='<div class="slbl" style="margin-bottom:12px"><h3>Lifetime Stats</h3><p>Across all seasons</p></div>';
@@ -540,6 +552,21 @@ function openProfile(p){
   document.getElementById('profileOv').classList.add('open');
 }
 function closeProfile(){document.getElementById('profileOv').classList.remove('open');}
+function editNick(p){
+  document.getElementById('nickEdit_'+p).style.display='block';
+  document.getElementById('nickInput_'+p).focus();
+}
+function saveNick(p){
+  var val=document.getElementById('nickInput_'+p).value.trim();
+  if(!val){return;}
+  NICK[p]=val;
+  persistProfile();
+  // Update display inline without closing overlay
+  var disp=document.getElementById('nickDisplay_'+p);
+  if(disp){disp.textContent=val;}
+  document.getElementById('nickEdit_'+p).style.display='none';
+  render(); // refresh all tabs so nick shows everywhere
+}
 function triggerPhotoUpload(p){photoUploadTarget=p;document.getElementById('photoInput').click();}
 function handlePhotoUpload(e){
   var file=e.target.files[0];
@@ -547,12 +574,12 @@ function handlePhotoUpload(e){
   var reader=new FileReader();
   reader.onload=function(ev){
     PHOTOS[photoUploadTarget]=ev.target.result;
-    persist();
-    // Profile overlay re-opens with fresh photo after persist triggers re-render
+    persistProfile(); // saves to SEPARATE profile doc — never conflicts with round saves
     openProfile(photoUploadTarget);
   };
   reader.readAsDataURL(file);
   e.target.value='';
+}
 }
 
 function openAdd(){
@@ -667,15 +694,14 @@ function persist(){
   lastUpdated=now.toLocaleDateString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
   isSaving=true;
   showStatus('Saving...',false);
+  // DATA doc: rounds + scores only. Photos and nicks live in a SEPARATE doc.
   db.collection('league').doc('data').set({
     r25:ST.r25,
     r26:ST.r26,
     scores:SCORES,
-    photos:PHOTOS,
     lastUpdated:lastUpdated,
-    v:4
+    v:5
   }).then(function(){
-    // isSaving reset after a short delay to allow the onSnapshot echo to be ignored
     setTimeout(function(){isSaving=false;},800);
     showStatus('\u2713 Saved \u00B7 all devices updating',true);
     setTimeout(function(){showStatus('\u25CF Live \u00B7 '+lastUpdated,true);},2500);
@@ -685,8 +711,21 @@ function persist(){
   });
 }
 
+function persistProfile(){
+  // PROFILE doc: photos and nicks only. Completely isolated from round saves.
+  isProfileSaving=true;
+  db.collection('league').doc('profile').set({
+    photos:PHOTOS,
+    nicks:NICK
+  }).then(function(){
+    setTimeout(function(){isProfileSaving=false;},800);
+  }).catch(function(){
+    isProfileSaving=false;
+  });
+}
+
 function applyRemoteData(d){
-  // Load all fields from Firestore into local state
+  // Only apply rounds + scores — never photos or nicks (those come from profile doc)
   if(d.v&&d.v>=4){
     if(d.r25){ST.r25=d.r25;}
     if(d.r26){ST.r26=d.r26;}
@@ -697,59 +736,66 @@ function applyRemoteData(d){
       }
     }
   }
-  if(d.photos){
-    var k2;
-    for(k2 in d.photos){
-      if(PHOTOS.hasOwnProperty(k2)){PHOTOS[k2]=d.photos[k2];}
-    }
-  }
   if(d.lastUpdated){lastUpdated=d.lastUpdated;}
 }
 
+function applyProfileData(d){
+  // Apply photos and nicks from the profile doc
+  if(d.photos){
+    var k;
+    for(k in d.photos){
+      if(PHOTOS.hasOwnProperty(k)){PHOTOS[k]=d.photos[k];}
+    }
+  }
+  if(d.nicks){
+    var k2;
+    for(k2 in d.nicks){
+      if(NICK.hasOwnProperty(k2)){NICK[k2]=d.nicks[k2];}
+    }
+  }
+}
+
 function startListener(){
-  // Cancel any existing listener before starting a new one
   if(unsubscribeListener){unsubscribeListener();}
+  if(unsubscribeProfileListener){unsubscribeProfileListener();}
 
+  // ---- Listener 1: rounds + scores (data doc) ----
   unsubscribeListener = db.collection('league').doc('data').onSnapshot(
-    {includeMetadataChanges:false}, // only fire on confirmed server writes
+    {includeMetadataChanges:false},
     function(doc){
-      if(!doc.exists){
-        // First run — seed with default data already in ST / SCORES
-        showStatus('\u25CF Live',true);
-        render();
-        return;
-      }
+      if(!doc.exists){showStatus('\u25CF Live',true);render();return;}
       var d=doc.data();
-
-      if(isSaving){
-        // This echo is from our own save — just update status, don't re-apply
-        render();
-        return;
-      }
-
-      // Remote update from another device — apply it and re-render
+      if(isSaving){render();return;}
       applyRemoteData(d);
-      showStatus('\u25CF Live \u00B7 updated from another device',true);
-      setTimeout(function(){
-        showStatus('\u25CF Live \u00B7 '+(lastUpdated||''),true);
-      },3000);
+      showStatus('\u25CF Live \u00B7 updated',true);
+      setTimeout(function(){showStatus('\u25CF Live \u00B7 '+(lastUpdated||''),true);},3000);
       render();
-
-      // If a profile overlay is open, refresh it with the latest photo
-      var ov=document.getElementById('profileOv');
-      if(ov&&ov.classList.contains('open')){
-        // Find which player is open by checking the name in the modal
-        var nameEl=document.querySelector('.profile-name');
-        if(nameEl){openProfile(nameEl.textContent);}
-      }
     },
     function(err){
-      // Listener error (e.g. offline) — show disconnected indicator
       showStatus('\u25CF Offline \u2013 changes save when reconnected',false);
       console.warn('Firestore listener error:',err);
     }
   );
+
+  // ---- Listener 2: photos + nicks (profile doc) ----
+  unsubscribeProfileListener = db.collection('league').doc('profile').onSnapshot(
+    {includeMetadataChanges:false},
+    function(doc){
+      if(!doc.exists){return;}
+      if(isProfileSaving){return;}
+      applyProfileData(doc.data());
+      render();
+      // If profile overlay is open, refresh it
+      var ov=document.getElementById('profileOv');
+      if(ov&&ov.classList.contains('open')){
+        var nameEl=document.querySelector('.profile-name');
+        if(nameEl){openProfile(nameEl.textContent);}
+      }
+    },
+    function(err){console.warn('Profile listener error:',err);}
+  );
 }
+
 
 // ---- Pull to refresh ----
 var ptrStart=0,ptrActive=false;
@@ -791,7 +837,6 @@ if('serviceWorker' in navigator){
 
 // ---- Boot ----
 // Correct scores: the canonical last-5 per player derived from D26 round scores.
-// If Firestore has drifted (scores got pushed multiple times), this resets them.
 var CORRECT_SCORES = {
   "Joe B":[109,106,95,96,111],
   "Joe N":[138,120,121,104,109],
@@ -806,9 +851,20 @@ function scoresMatch(a,b){
 }
 
 showStatus('Connecting...',false);
-render(); // render from seed data immediately so UI isn't blank
+render(); // render seed data immediately so UI isn't blank
 
-// Read current Firestore scores first; fix if wrong, then start the live listener
+// Load profile doc (photos + nicks) and data doc in parallel, then start listeners
+var profileLoaded=false, dataLoaded=false;
+function tryStart(){if(profileLoaded&&dataLoaded){startListener();}}
+
+// 1. Load profile doc first
+db.collection('league').doc('profile').get().then(function(doc){
+  if(doc.exists){applyProfileData(doc.data());render();}
+  profileLoaded=true;
+  tryStart();
+}).catch(function(){profileLoaded=true;tryStart();});
+
+// 2. Load data doc — fix scores if needed, then start listeners
 db.collection('league').doc('data').get().then(function(doc){
   if(doc.exists){
     var d=doc.data();
@@ -817,16 +873,13 @@ db.collection('league').doc('data').get().then(function(doc){
       var k;
       for(k in CORRECT_SCORES){
         if(d.scores[k]&&!scoresMatch(d.scores[k],CORRECT_SCORES[k])){
-          needsFix=true;
-          break;
+          needsFix=true;break;
         }
       }
     }
     if(needsFix){
-      // Apply all remote data first (rounds, photos etc) but override scores with correct values
       applyRemoteData(d);
       SCORES={"Joe B":cloneArr(CORRECT_SCORES["Joe B"]),"Joe N":cloneArr(CORRECT_SCORES["Joe N"]),"Henry":cloneArr(CORRECT_SCORES["Henry"]),"Jenny":cloneArr(CORRECT_SCORES["Jenny"])};
-      // Write the corrected scores back to Firestore
       isSaving=true;
       db.collection('league').doc('data').update({scores:SCORES}).then(function(){
         setTimeout(function(){isSaving=false;},800);
@@ -834,14 +887,13 @@ db.collection('league').doc('data').get().then(function(doc){
         render();
       }).catch(function(){isSaving=false;});
     }else{
-      if(doc.exists){applyRemoteData(d);}
+      applyRemoteData(d);
       render();
     }
   }
-  startListener();
-}).catch(function(){
-  startListener();
-});
+  dataLoaded=true;
+  tryStart();
+}).catch(function(){dataLoaded=true;tryStart();});
 </script>
 </body>
 </html>
